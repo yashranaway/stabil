@@ -1,0 +1,20 @@
+{
+  "name": "stabil",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Stabil — stability-check platform (monorepo)",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3"
+  }
+}
