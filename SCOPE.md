@@ -1,6 +1,6 @@
 # Stabil — Stability Check Platform · Scope
 
-> **Status:** Draft v0.3 — derived from the handwritten POC (`poc.png`), a clarifying Q&A, and a confirmed tech stack.
+> **Status:** Draft v0.4 — derived from the handwritten POC (`poc.png`), a clarifying Q&A, and a confirmed tech stack (free, self-hosted AI + storage for now).
 > **Date:** 2026-06-06
 > **About this doc:** Shared understanding of the project before design/build. All major product decisions below are **confirmed** via Q&A. Remaining unknowns are **design-time calibration details** (exact weights, tier bands, tech stack) and are listed in §13.
 
@@ -44,11 +44,11 @@ Because candidates see their own report, **explainability** and a **"how to impr
 | 17 | Accounts | **Yes**, with re-scoring over time (improvement loop) |
 | 18 | Consent | **Explicit per-share consent** before any employer/recruiter sees a report |
 | 19 | Data retention | **Keep while account active; delete on request** |
-| 20 | AI processing | **Hosted/cloud LLM OK** (standard secure handling) for parsing/analysis |
+| 20 | AI processing | **Free, provider-agnostic** — self-hosted **Ollama** (open model) as the default; PII stays in-house. Swappable to a managed provider later (see §10) |
 | 21 | Platform | **Web app + mobile app** |
 | 22 | Report delivery | **In-app dashboard + PDF export** |
 | 23 | Employer multi-candidate view | **Phased** — single reports in POC; comparison/ranking dashboard later |
-| 24 | Tech stack | **TypeScript monorepo** — Next.js (web) · Expo/React Native (mobile) · NestJS API · PostgreSQL + Prisma · Anthropic Claude for parsing (see §10) |
+| 24 | Tech stack | **TypeScript monorepo** — Next.js (web) · Expo/React Native (mobile) · NestJS API · PostgreSQL + Prisma · free/local LLM (Ollama) for parsing · MinIO storage (see §10) |
 
 ---
 
@@ -181,7 +181,7 @@ Delivered as an **in-app dashboard (web + mobile) + downloadable PDF**, containi
 ## 9. Delivery Phases
 
 - **Phase 1 — Core scoring engine + report:** Both modes (user self-selects), **form-based input**, mode-specific + common scoring blocks, fixed weights, 0–1500 scale, 5-tier mapping, accounts with re-scoring, candidate & employer report views (dashboard + PDF), explicit per-share consent.
-- **Phase 2 — Resume & document parsing:** Automated extraction (hosted LLM) from resumes/documents to auto-fill and enrich parameters.
+- **Phase 2 — Resume & document parsing:** Automated extraction (self-hosted/local LLM + OCR) from resumes/documents to auto-fill and enrich parameters.
 - **Phase 3 — Verification & bonus (Verified User):** Document validation (Aadhaar/PAN + international), trust flags, bonus points; OCR + manual review first, KYC/government APIs later.
 
 **Post-POC / later enhancements** (designed-for now, built later): in-platform skill tests (e.g. Python test) feeding a test sub-score; richer AI-based communication assessment (written/spoken); employer/recruiter **multi-candidate comparison & ranking dashboard**.
@@ -201,15 +201,16 @@ Delivered as an **in-app dashboard (web + mobile) + downloadable PDF**, containi
 | **Scoring engine** | Standalone TS package (`packages/scoring`) | Pure, deterministic, heavily unit-tested; fixed-weight model lives here |
 | **Database** | PostgreSQL + Prisma | Relational fit for profiles, parameters, scores, audit; data-driven parameter model maps to tables |
 | **Auth** | Role-based (candidate / employer / recruiter / admin), JWT sessions for mobile | Drives differentiated views (§6.3) and per-share consent (§6.2) |
-| **Storage** | S3-compatible (Cloudflare R2 / AWS S3) | Secure document uploads + generated PDFs |
-| **AI parsing** | Anthropic **Claude API** (Phase 2) | LLM-driven parsing — no Python ML stack needed, keeps the codebase TS-only. Model chosen at build time for cost/quality |
+| **Storage** | **MinIO** (self-hosted, S3-compatible) — free; local disk for dev | S3-compatible API means a later swap to Cloudflare R2 / AWS S3 / Supabase is a config change, not a rewrite |
+| **AI parsing** | **Provider-agnostic adapter; free default = self-hosted Ollama** (open model, e.g. Llama 3.x) + **Tesseract** OCR for scans (Phase 2) | Zero cost and PII never leaves our infra; swap to a managed LLM later via one adapter. Keeps the codebase TS-only |
 | **Validation** | Zod (shared schemas) | One source of truth for form/API/parse shapes |
 | **PDF** | `@react-pdf/renderer` | Report export (§8) |
 | **Testing** | Vitest (unit, esp. scoring) + Playwright (web e2e) | Confidence in the deterministic engine and core flows |
 | **Deploy** | Vercel (web) · Expo EAS (mobile) · container host + managed Postgres (API/DB) | Standard, low-ops for a POC |
 
 - **Parameter model:** parameters are data-driven (weight, source, visibility level, mode applicability) so scoring is configurable and explainable.
-- **AI processing:** hosted Claude API with standard secure data handling for candidate PII.
+- **AI processing:** free and **provider-agnostic** — the default is self-hosted **Ollama**, so candidate PII never leaves our infrastructure; a thin adapter lets us swap to a managed LLM later. (Avoid free *managed* tiers such as Gemini's free tier for raw PII — several train on submitted data.)
+- **Storage:** free **MinIO** (S3-compatible) now; because everything talks the S3 API, moving to Cloudflare R2 / AWS S3 later is configuration only.
 
 ---
 
