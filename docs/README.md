@@ -59,7 +59,7 @@ These are distilled from `SCOPE.md`. Every doc must stay consistent with them.
 | DB | **PostgreSQL + Prisma** |
 | Auth | Role-based (candidate / employer / recruiter / admin), JWT for mobile |
 | Storage | **MinIO** (self-hosted, S3-compatible); local disk for dev |
-| AI parsing | **Provider-agnostic adapter; default = self-hosted Ollama** + **Tesseract** OCR. PII stays in-house. |
+| AI parsing | **Provider-agnostic adapter; default = OpenRouter** (hosted LLM gateway) + **Tesseract** OCR. Choose no-training/zero-retention models; adapter allows self-hosted swap later. |
 | Validation | **Zod** (shared schemas) |
 | Charts (web) | **Chart.js** via **react-chartjs-2** |
 | PDF | **@react-pdf/renderer** |
@@ -74,7 +74,7 @@ These are distilled from `SCOPE.md`. Every doc must stay consistent with them.
 |-------|-------|------|
 | **0** | Foundations (monorepo, CI, shared packages, auth shell) | `phases/phase-0-foundations.md` |
 | **1** | Core scoring + report (forms, both modes, accounts, tiers, views) | `phases/phase-1-core-scoring.md` |
-| **2** | Resume & document parsing (Ollama + OCR) | `phases/phase-2-parsing.md` |
+| **2** | Resume & document parsing (OpenRouter LLM + OCR) | `phases/phase-2-parsing.md` |
 | **3** | Verification & bonus (Verified User; OCR+manual → KYC) | `phases/phase-3-verification.md` |
 | **4** | Enhancements (skill tests, richer comms, comparison dashboard) | `phases/phase-4-enhancements.md` |
 
@@ -134,7 +134,7 @@ docs/
         ├── auth-accounts.md          # users, roles, sessions, JWT
         ├── profiles.md               # candidate profiles, claimable profiles, re-scoring
         ├── scoring.md                # wraps @stabil/scoring; score runs, history
-        ├── parsing.md                # resume/doc parsing orchestration (Ollama + OCR)
+        ├── parsing.md                # resume/doc parsing orchestration (OpenRouter LLM + OCR)
         ├── verification.md           # document verification, Verified User, bonus
         ├── documents-storage.md      # uploads, MinIO/S3, virus scan, lifecycle
         ├── reports-pdf.md            # report assembly + PDF export

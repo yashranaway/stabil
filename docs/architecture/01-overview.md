@@ -11,7 +11,7 @@ Stabil scores how *stable* a person is, on a shared **`0–1500`** scale (SCOPE 
 
 ## 1. The big idea, in one breath
 
-A person picks a **mode** (Fresher / Working Professional, SCOPE §3), fills in forms (and later uploads a resume + documents). Raw answers are mapped to **normalized `[0,1]` fractions per parameter** by the **rubric layer**, the pure **scoring engine** turns those fractions into points and a tier, the result is persisted as an immutable **ScoreRun**, and a **report** is rendered — *filtered by audience* so candidates never see sensitive line-items (age, marital status; SCOPE §6.3). Everything is deterministic, explainable, consent-gated, and runs on free/self-hosted infrastructure (Ollama, MinIO).
+A person picks a **mode** (Fresher / Working Professional, SCOPE §3), fills in forms (and later uploads a resume + documents). Raw answers are mapped to **normalized `[0,1]` fractions per parameter** by the **rubric layer**, the pure **scoring engine** turns those fractions into points and a tier, the result is persisted as an immutable **ScoreRun**, and a **report** is rendered — *filtered by audience* so candidates never see sensitive line-items (age, marital status; SCOPE §6.3). Everything is deterministic, explainable, and consent-gated. AI parsing uses the external **OpenRouter** LLM gateway; document storage uses self-hosted **MinIO**.
 
 The single most important architectural rule (from [`../README.md`](../README.md) "Engine boundary"):
 
@@ -25,7 +25,7 @@ This boundary is load-bearing for the rest of this document — see [§3](#3-mon
 
 ### 2.1 System context (Level 1)
 
-Who and what touches Stabil. Four human roles (SCOPE §6, README "Audiences") and three external dependencies (Ollama, MinIO, SMTP).
+Who and what touches Stabil. Four human roles (SCOPE §6, README "Audiences") and three external dependencies (OpenRouter, MinIO, SMTP).
 
 ```mermaid
 graph TB
@@ -38,8 +38,8 @@ graph TB
 
     STABIL["<b>Stabil</b><br/>Stability-scoring platform<br/>(web + mobile + API + engine)"]
 
-    subgraph "External dependencies (self-hosted / free)"
-        OLLAMA["Ollama<br/>local LLM — resume/doc parsing<br/>(Phase 2). PII stays in-house."]
+    subgraph "External dependencies"
+        OPENROUTER["OpenRouter<br/>hosted LLM gateway — resume/doc parsing<br/>(Phase 2). Use no-training/zero-retention models."]
         MINIO["MinIO<br/>S3-compatible object storage<br/>(resumes, IDs, generated PDFs)"]
         SMTP["Email / SMTP<br/>claim invites, score-ready,<br/>consent requests"]
         PG[("PostgreSQL<br/>profiles · params · scores · audit")]
@@ -50,7 +50,7 @@ graph TB
     REC -->|"search, shortlist, request report"| STABIL
     ADMIN -->|"approve/reject documents"| STABIL
 
-    STABIL -->|"parse text (HTTP)"| OLLAMA
+    STABIL -->|"parse text (HTTPS API)"| OPENROUTER
     STABIL -->|"put/get objects (S3 API)"| MINIO
     STABIL -->|"send mail (SMTP)"| SMTP
     STABIL -->|"SQL via Prisma"| PG
@@ -65,8 +65,8 @@ graph TB
 
 | External dep | Protocol | Used for | Phase | Swappable to |
 |---|---|---|---|---|
-| **Ollama** | HTTP (local) | Resume/document text extraction & field parsing | 2 | Managed LLM via one adapter (SCOPE §10) |
-| **Tesseract** | in-process / lib | OCR for scanned IDs | 2/3 | — |
+| **OpenRouter** | HTTPS (external) | Resume/document text extraction & field parsing; model selectable via `OPENROUTER_MODEL` | 2 | Self-hosted Ollama via one adapter swap (SCOPE §10) |
+| **Tesseract** | in-process / lib | OCR for scanned documents (in-house) | 2/3 | — |
 | **MinIO** | S3 API | Uploads + generated PDFs | 1 (PDFs) / 2 (uploads) | Cloudflare R2 / AWS S3 (config only) |
 | **SMTP / email** | SMTP | Notifications (claim, score-ready, consent ask) | 1 | Any SMTP provider |
 | **PostgreSQL** | SQL (Prisma) | System of record | 0 | — |
@@ -98,7 +98,7 @@ graph TB
 
     DB[("PostgreSQL<br/>+ Prisma")]
     OBJ["MinIO (S3)"]
-    LLM["Ollama + Tesseract"]
+    LLM["OpenRouter (LLM) + Tesseract (OCR)"]
     MAIL["SMTP"]
 
     WEB -->|"REST /api/v1 (JSON)"| CTRL
@@ -374,7 +374,7 @@ sequenceDiagram
 
 When a document is approved, its parameter (e.g. `verifiedDocuments` in `config.ts`, block `verification`) gains a non-zero fraction on the next score run → bonus points (SCOPE §4.1, §5). Future automated KYC (DigiLocker / passport APIs) slots in as an alternative to manual review without changing the flow. Module: [`../backend/modules/verification.md`](../backend/modules/verification.md).
 
-### 4.6 Resume parsing (Ollama + OCR)
+### 4.6 Resume parsing (OpenRouter LLM + OCR)
 
 (SCOPE §4.2, §9 Phase 2.)
 
@@ -386,7 +386,7 @@ sequenceDiagram
     participant OBJ as MinIO
     participant Q as Job queue
     participant WK as Parsing worker
-    participant LLM as Ollama (local)
+    participant LLM as OpenRouter (external LLM)
 
     C->>API: POST /api/v1/documents (resume.pdf)
     API->>OBJ: put object
@@ -395,10 +395,10 @@ sequenceDiagram
     Q->>WK: pick up job
     WK->>OBJ: get resume
     WK->>WK: extract text (pdf / Tesseract for scans)
-    WK->>LLM: prompt → structured fields (experience, tenure, skills…)
+    WK->>LLM: HTTPS prompt → structured fields (experience, tenure, skills…)
     LLM-->>WK: JSON (validated by shared Zod parse schema)
     WK->>API: write suggested ParameterValues (candidate confirms)
-    Note over WK,API: PII never leaves our infra (self-hosted Ollama, SCOPE §10/§11)
+    Note over WK,LLM: Resume/doc text sent to OpenRouter (third party).<br/>Use no-training/zero-retention models (SCOPE §10/§11).
 ```
 
 Parsing *suggests* values; the candidate reviews/confirms before they feed the rubric → engine. Module: [`../backend/modules/parsing.md`](../backend/modules/parsing.md).
@@ -467,7 +467,7 @@ graph LR
         Q --> W3[report.pdf]
         Q --> W4[notify.*]
     end
-    W1 --> OLLAMA[Ollama]
+    W1 --> OPENROUTER[OpenRouter LLM]
     W2 --> TESS[Tesseract]
     W3 --> PDF["@react-pdf/renderer"]
     W3 --> MINIO[MinIO]
@@ -480,7 +480,7 @@ graph LR
 
 | Job | Triggered by | Does | External dep | Phase |
 |---|---|---|---|---|
-| `parse.resume` | resume upload | extract → structured fields | Ollama (+ Tesseract) | 2 |
+| `parse.resume` | resume upload | extract → structured fields | OpenRouter LLM (+ Tesseract OCR) | 2 |
 | `verify.extract` | ID upload | OCR + field extraction → awaiting-review | Tesseract | 3 |
 | `report.pdf` | "Export PDF" | render report → store object | `@react-pdf/renderer`, MinIO | 1 |
 | `notify.claimInvite` / `notify.scoreReady` / `notify.consentAsk` | various | send email/push | SMTP | 1 |
@@ -500,7 +500,7 @@ Jobs are **idempotent and retryable**; failures surface as a status on the ownin
 | **Audience visibility filtering** | `@stabil/scoring` `filterForAudience` | Candidate view drops `employer-only` line-items *without* changing the total. | SCOPE §6.3, `audience.ts` |
 | **Audit logging** | interceptor + repository | Consent grants/revokes, doc decisions, score runs, deletions are appended immutably. | SCOPE §11, [02-data-model.md](02-data-model.md) |
 | **Error model** | exception filter | RFC 9457 `application/problem+json` for all errors. | README API conventions |
-| **PII / retention** | services + storage policy | IDs encrypted at rest in MinIO; retain while account active; delete on request. | SCOPE §11, [05-security-privacy.md](05-security-privacy.md) |
+| **PII / retention** | services + storage policy | IDs encrypted at rest in MinIO; resume/doc text sent to OpenRouter (use no-training models); retain while account active; delete on request. | SCOPE §11, [05-security-privacy.md](05-security-privacy.md) |
 | **IDs / numbers** | DB + engine | UUID v7 PKs; points are integers (`Math.round`). | README conventions |
 
 The two concerns most specific to Stabil's risk profile — **consent enforcement** and **audience visibility filtering** — are deliberately implemented in *different* layers: consent is an **access** decision (guard, can you see *any* report?), while visibility filtering is a **rendering** decision (engine, *which line-items* of a permitted report). Keeping them separate means a bug in one cannot silently leak the other. Full treatment: [05-security-privacy.md](05-security-privacy.md).
@@ -515,7 +515,7 @@ The architecture is fixed up front; phases light up slices of it (SCOPE §9, REA
 graph TB
     P0["<b>Phase 0 — Foundations</b><br/>monorepo, CI, packages/types,<br/>auth shell, Prisma baseline"]
     P1["<b>Phase 1 — Core scoring + report</b><br/>forms, both modes, packages/core rubric,<br/>@stabil/scoring wired in, ScoreRun,<br/>tiers, candidate/employer views, consent, PDF"]
-    P2["<b>Phase 2 — Parsing</b><br/>Ollama + Tesseract workers,<br/>resume/doc → suggested ParameterValues"]
+    P2["<b>Phase 2 — Parsing</b><br/>OpenRouter LLM + Tesseract workers,<br/>resume/doc → suggested ParameterValues"]
     P3["<b>Phase 3 — Verification</b><br/>OCR + manual review, Verified User,<br/>verification-bonus block, admin queue"]
     P4["<b>Phase 4 — Enhancements</b><br/>skill-test sub-score, richer comms AI,<br/>employer compare/ranking dashboard"]
 
@@ -526,7 +526,7 @@ graph TB
 |---|---|---|
 | **0** | `packages/types`, auth guards, Prisma schema baseline, CI | — |
 | **1** | `packages/core` (rubric), wires `@stabil/scoring`, `ScoreRun` persistence, report rendering, consent gate, `report.pdf` job | engine's `computeScore` / `filterForAudience` / `mapTier` (already built) |
-| **2** | parsing workers + Ollama adapter; `parse.resume` job | job queue, MinIO, shared parse Zod schemas |
+| **2** | parsing workers + OpenRouter adapter; `parse.resume` job | job queue, MinIO, shared parse Zod schemas |
 | **3** | verification workers, admin review, `verify.extract` job | `verification` block + `verifiedDocuments` param already in `config.ts`; re-scoring loop |
 | **4** | skill-test sub-score, comms AI, compare dashboard | engine "designed to accept a test sub-score" (SCOPE §4.4, fact "Skill tests"); audience filtering already supports multi-candidate |
 

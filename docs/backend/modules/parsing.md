@@ -3,7 +3,7 @@
 > **Status:** Draft v0.1 · **Phase:** 2 · **Owner area:** backend
 > **Related:** [phases/phase-2-parsing.md](../../phases/phase-2-parsing.md) · [backend/modules/documents-storage.md](./documents-storage.md) · [backend/modules/scoring.md](./scoring.md) · [architecture/03-scoring-engine.md](../../architecture/03-scoring-engine.md) · [architecture/05-security-privacy.md](../../architecture/05-security-privacy.md) · [SCOPE.md](../../SCOPE.md)
 
-The parsing module is the Phase 2 orchestration layer that turns a raw resume or scanned document into a set of normalized `[0,1]` parameter fractions ready for the scoring engine. It owns the full pipeline: file ingestion → format detection → OCR (when needed) → LLM-structured extraction validated by a Zod schema → per-field confidence scoring → rubric mapping → human-in-the-loop confirmation. All processing is strictly in-house; candidate PII never reaches a third-party service (SCOPE §2 decision 20, §10, §11).
+The parsing module is the Phase 2 orchestration layer that turns a raw resume or scanned document into a set of normalized `[0,1]` parameter fractions ready for the scoring engine. It owns the full pipeline: file ingestion → format detection → OCR (when needed) → LLM-structured extraction validated by a Zod schema → per-field confidence scoring → rubric mapping → human-in-the-loop confirmation. LLM extraction is performed via **OpenRouter** (a hosted, provider-agnostic LLM gateway); OCR remains in-house via Tesseract. Resume and document text is sent to OpenRouter as an external service — choose models/providers with **no-training / zero-retention** data policies to minimize PII exposure. The adapter interface allows swapping to a self-hosted model later without pipeline changes.
 
 ---
 
@@ -140,7 +140,7 @@ model ParseJob {
   errorDetail     String?         // Human-readable error + stack trace (truncated) on FAILED
 
   // Observability
-  llmModel        String?         // e.g. "llama3.2:8b"
+  llmModel        String?         // e.g. "openai/gpt-4o-mini" (as resolved by OpenRouter)
   llmLatencyMs    Int?
   ocrLatencyMs    Int?
   retryCount      Int             @default(0)
@@ -186,7 +186,7 @@ The `extractedResume` and `clarifications` columns are stored as Postgres `jsonb
 | **BullMQ** (`bullmq`) | npm | Async job queue |
 | **ioredis** (`ioredis`) | npm | BullMQ Redis transport |
 | **Redis** | infrastructure | Sidecar; added in Phase 2 dev docker-compose (`redis:7-alpine`) |
-| **Ollama** | infrastructure | Default LLM backend; `http://localhost:11434` or `OLLAMA_BASE_URL` |
+| **OpenRouter** | external service | Default LLM gateway; `https://openrouter.ai/api/v1` or `OPENROUTER_BASE_URL` |
 | **`pdfjs-dist`** | npm | Text-layer extraction from PDF files |
 | **`tesseract.js`** | npm | Node-native OCR; runs in worker threads |
 | **Zod** | monorepo shared | Schema validation; guards against LLM hallucination |
@@ -196,7 +196,7 @@ The `extractedResume` and `clarifications` columns are stored as Postgres `jsonb
 
 ## LLM Adapter Interface
 
-The adapter contract is **provider-agnostic by design**. It lives in `packages/types/src/parsing/llm-adapter.ts` and is the only thing `ExtractionService` knows about. Swapping from Ollama to a managed provider means writing a new class that satisfies this interface and registering it via the NestJS DI token `LLM_ADAPTER` — no pipeline code changes (SCOPE §2 decision 20).
+The adapter contract is **provider-agnostic by design**. It lives in `packages/types/src/parsing/llm-adapter.ts` and is the only thing `ExtractionService` knows about. Swapping from OpenRouter to a self-hosted provider (or vice versa) means writing a new class that satisfies this interface and registering it via the NestJS DI token `LLM_ADAPTER` — no pipeline code changes (SCOPE §2 decision 20).
 
 ```typescript
 // packages/types/src/parsing/llm-adapter.ts
@@ -228,10 +228,10 @@ export interface LlmExtractionResponse {
 /**
  * One implementation per LLM provider.
  * Registered in NestJS DI under the token `LLM_ADAPTER`.
- * Factory selects implementation from env var `LLM_ADAPTER` (default: "ollama").
+ * Factory selects implementation from env var `LLM_ADAPTER` (default: "openrouter").
  */
 export interface LlmAdapter {
-  /** Unique provider name used in logs and observability (e.g. "ollama", "openai"). */
+  /** Unique provider name used in logs and observability (e.g. "openrouter", "self-hosted"). */
   readonly name: string;
   /**
    * Send `request.text` to the model using `request.promptKey` as the system
@@ -246,43 +246,43 @@ export interface LlmAdapter {
 }
 ```
 
-### Default implementation — `OllamaAdapter`
+### Default implementation — `OpenRouterAdapter`
 
-**File:** `apps/api/src/parsing/adapters/ollama.adapter.ts`
+**File:** `apps/api/src/parsing/adapters/openrouter.adapter.ts`
 
-- Connects to `OLLAMA_BASE_URL` (default `http://localhost:11434`). Startup guard rejects any URL with a public hostname unless `ALLOW_EXTERNAL_LLM=true` is explicitly set (PII safety — SCOPE §11).
-- Posts to `/api/generate` with `format: "json"` so Ollama constrains the model's output to a JSON token stream.
+- Connects to `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`) using `OPENROUTER_API_KEY`.
+- Posts to `/chat/completions` with `response_format: { type: "json_object" }` so the model's output is constrained to valid JSON.
 - System prompt loaded from `apps/api/src/parsing/prompts/resume-extraction-v1.txt` (version-stamped; changing the prompt increments the version so prompt regressions are auditable).
-- Default model: `llama3.2:8b` (overridable via `OLLAMA_MODEL` env var).
+- Default model: configurable via `OPENROUTER_MODEL` env var (e.g. `openai/gpt-4o-mini`); the OpenRouter gateway routes to the chosen provider.
 - Request timeout: 60 s; throws typed `LlmTimeoutError` on expiry.
 - On `LlmTimeoutError` or network error: `ParseJobWorker` transitions the job to `FAILED` immediately (no retry at the HTTP layer; BullMQ retry handles the outer loop).
+- **Privacy note:** resume text is sent to an external service. Select an OpenRouter provider with a verified **no-training / zero-retention** policy for the chosen model. The adapter interface allows swapping to a self-hosted model by registering a new implementation — no pipeline code changes required.
 
 ### Stub implementation — `StubLlmAdapter`
 
 **File:** `apps/api/src/parsing/adapters/stub.adapter.ts`
 
-Returns fixture-keyed pre-recorded JSON responses from `apps/api/src/parsing/eval/fixtures/*.expected.json`. Used in CI (`LLM_ADAPTER=stub`) and unit tests so the full pipeline (schema validation, confidence logic, rubric mapping) runs deterministically without a live Ollama process.
+Returns fixture-keyed pre-recorded JSON responses from `apps/api/src/parsing/eval/fixtures/*.expected.json`. Used in CI (`LLM_ADAPTER=stub`) and unit tests so the full pipeline (schema validation, confidence logic, rubric mapping) runs deterministically without hitting the OpenRouter API.
 
 ### Provider swap procedure
 
 ```
 # 1. Implement the interface
-class OpenAiAdapter implements LlmAdapter { … }
+class SelfHostedAdapter implements LlmAdapter { … }
 
 # 2. Register in NestJS DI factory
 # apps/api/src/parsing/parsing.module.ts
 {
   provide: 'LLM_ADAPTER',
   useFactory: (config: ConfigService) =>
-    config.get('LLM_ADAPTER') === 'openai'
-      ? new OpenAiAdapter(config)
-      : new OllamaAdapter(config),
+    config.get('LLM_ADAPTER') === 'self-hosted'
+      ? new SelfHostedAdapter(config)
+      : new OpenRouterAdapter(config),
   inject: [ConfigService],
 }
 
 # 3. Set env var
-LLM_ADAPTER=openai
-ALLOW_EXTERNAL_LLM=true   # required for any non-loopback provider
+LLM_ADAPTER=self-hosted
 ```
 
 No code in `ExtractionService`, `ParseJobWorker`, or any other pipeline stage changes.
@@ -440,7 +440,7 @@ flowchart TD
   J --> L[Normalize: strip\nheaders, collapse whitespace]
   K --> L
 
-  L --> M[ExtractionService\nLlmAdapter.extract\nstatus: EXTRACTING]
+  L --> M[ExtractionService\nLlmAdapter.extract (OpenRouter)\nstatus: EXTRACTING]
   M --> N{ExtractedResumeSchema\n.safeParse\nstatus: VALIDATING}
 
   N -- invalid → retry ≤ 2 --> M
@@ -496,7 +496,7 @@ sequenceDiagram
   participant MinIO
   participant Redis as Redis / BullMQ
   participant Worker as ParseJobWorker
-  participant Ollama
+  participant OpenRouter
   participant DB as PostgreSQL
 
   C->>FE: Selects resume file
@@ -533,11 +533,11 @@ sequenceDiagram
     Worker->>DB: UPDATE status = OCR
   end
   Worker->>DB: UPDATE status = EXTRACTING
-  Worker->>Ollama: POST /api/generate { prompt, text, format: "json" }
-  Ollama-->>Worker: rawJson
+  Worker->>OpenRouter: POST /chat/completions { model, messages, response_format }
+  OpenRouter-->>Worker: rawJson
   Worker->>Worker: ExtractedResumeSchema.safeParse(rawJson)
   alt Zod invalid (retry ≤ 2×)
-    Worker->>Ollama: retry with corrective prompt
+    Worker->>OpenRouter: retry with corrective prompt
   end
   Worker->>DB: UPDATE status = VALIDATING → MAPPING
   Worker->>Worker: ConfidenceService.annotate()
@@ -639,7 +639,7 @@ Up to two retries. On exhaustion → `FAILED` state with `errorDetail` storing t
 | Invalid MIME type | `InvalidFileTypeError` | Controller — upload validation | 400 |
 | File too large | `FileTooLargeError` | Controller — size guard | 400 |
 | Profile not found | `ProfileNotFoundError` | Controller — profile lookup | 400 |
-| LLM timeout | `LlmTimeoutError` | OllamaAdapter | Worker → FAILED |
+| LLM timeout | `LlmTimeoutError` | OpenRouterAdapter | Worker → FAILED |
 | LLM Zod retries exhausted | `ExtractionValidationError` | ExtractionService | Worker → FAILED |
 | OCR failure | `OcrError` | OcrService | Worker → FAILED |
 | Unreadable file | `FileDetectionError` | DetectionService | Worker → FAILED |
@@ -663,15 +663,15 @@ All errors that transition the job to `FAILED` write a truncated error message +
 
 Ownership is verified via `ParseJobOwnerGuard`: the guard resolves `ParseJob.profileId` from the DB and compares against the JWT subject. A `403 Forbidden` (RFC 9457) is returned if they don't match. Admins bypass ownership checks via the `admin` role check in the guard.
 
-### PII safety (non-negotiable — SCOPE §2 decision 20, §11)
+### PII safety (SCOPE §2 decision 20, §11)
 
 | Constraint | Implementation |
 |------------|----------------|
 | Raw files stored only in MinIO (self-hosted) | No file bytes written to external storage or logged |
-| Ollama on loopback or private network only | `OllamaAdapter` startup guard: `new URL(OLLAMA_BASE_URL).hostname` must be `localhost`, `127.0.0.1`, or a private CIDR (`10.x`, `172.16-31.x`, `192.168.x`). Throws `StartupError` on violation unless `ALLOW_EXTERNAL_LLM=true` is explicitly set. |
+| Resume text sent to OpenRouter (external service) | **Privacy trade-off:** extracted text is transmitted to OpenRouter's API. Select a model whose provider has a verified **no-training / zero-retention** policy. If stronger PII isolation is required, swap to a self-hosted adapter — the `LlmAdapter` interface allows this with no pipeline changes. |
 | `extractedResume` column encrypted at rest | Postgres host-level encryption; access via Prisma only within the `parsing` module |
 | No raw resume text in logs | `ParseJobWorker` logs job IDs, status transitions, and latencies only. Raw text strings and JSON payloads are never written to the logger. Verified by log-inspection integration test. |
-| Adapter swap PII warning | If `LLM_ADAPTER != "ollama"`, API emits a `warn`-level log: `"PII notice: LLM_ADAPTER is not 'ollama' — resume text will be sent to an external provider. Set ALLOW_EXTERNAL_LLM=true to confirm."` |
+| Self-hosted adapter option | Set `LLM_ADAPTER=self-hosted` and register a `SelfHostedAdapter` (e.g. targeting a private Ollama instance) to keep resume text within your own infrastructure. |
 | Retention aligned to profile lifecycle | `ParseJob` rows and MinIO objects are deleted when the owning profile is deleted (cascade in Prisma + MinIO lifecycle hook). Candidates can request deletion per SCOPE §11. |
 
 ---
@@ -680,14 +680,14 @@ Ownership is verified via `ParseJobOwnerGuard`: the guard resolves `ParseJob.pro
 
 | Sub-stage | Phase | Description |
 |-----------|-------|-------------|
-| **P2-1** Infrastructure | 2 | Redis sidecar in dev docker-compose; BullMQ `ParseJobQueue` in `ParsingModule`; env schema additions (`REDIS_URL`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `CONFIDENCE_THRESHOLD`, `LLM_ADAPTER`, `ALLOW_EXTERNAL_LLM`) |
-| **P2-2** LLM adapter layer | 2 | `LlmAdapter` interface; `OllamaAdapter`; `StubLlmAdapter`; DI factory |
+| **P2-1** Infrastructure | 2 | Redis sidecar in dev docker-compose; BullMQ `ParseJobQueue` in `ParsingModule`; env schema additions (`REDIS_URL`, `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`, `CONFIDENCE_THRESHOLD`, `LLM_ADAPTER`) |
+| **P2-2** LLM adapter layer | 2 | `LlmAdapter` interface; `OpenRouterAdapter`; `StubLlmAdapter`; DI factory |
 | **P2-3** Pipeline services | 2 | `DetectionService`, `PdfTextService`, `OcrService`, `ExtractionService`, `ConfidenceService`, `RubricMappingService` |
 | **P2-4** `ParseJobWorker` | 2 | BullMQ processor — orchestrates P2-3 services; state-machine transitions; retry logic |
 | **P2-5** REST endpoints | 2 | All four endpoints; file-type/size guards; idempotency check; owner guards |
 | **P2-6** Rubric additions | 2 | `mapExtractedResumeToFractions` in `packages/core`; unit tests for edge cases |
-| **P2-7** Eval harness | 2 | Golden fixtures; `eval.test.ts`; nightly Ollama CI job |
-| **Managed LLM swap** | Post-POC | New `LlmAdapter` implementation (e.g. `OpenAiAdapter`); zero pipeline changes |
+| **P2-7** Eval harness | 2 | Golden fixtures; `eval.test.ts`; nightly OpenRouter CI job |
+| **Self-hosted LLM swap** | Post-POC | New `LlmAdapter` implementation (e.g. `OllamaAdapter`); zero pipeline changes |
 | **Bulk employer parsing** | Phase 4 | Parallel parse-job submission for employer-submitted candidate batches |
 
 ---
@@ -725,17 +725,17 @@ apps/api/src/parsing/eval/
 ### Running the eval
 
 ```bash
-# Against live local Ollama (requires Ollama running with llama3.2:8b pulled)
-OLLAMA_BASE_URL=http://localhost:11434 pnpm --filter @stabil/api eval:parse
+# Against live OpenRouter (requires OPENROUTER_API_KEY set)
+OPENROUTER_API_KEY=sk-or-... pnpm --filter @stabil/api eval:parse
 
-# In CI (deterministic — uses StubLlmAdapter)
+# In CI (deterministic — uses StubLlmAdapter; no API key needed)
 LLM_ADAPTER=stub pnpm --filter @stabil/api test
 
-# Nightly job (GitHub Actions — real Ollama in a service container)
+# Nightly job (GitHub Actions — real OpenRouter API call)
 # Configured in .github/workflows/eval-nightly.yml
 ```
 
-The `StubLlmAdapter` reads fixture-keyed pre-recorded responses from the `fixtures/*.expected.json` files — the full pipeline (Zod validation, confidence annotation, rubric mapping) runs deterministically. Accuracy tests against real Ollama run only in the nightly job to keep the standard CI fast.
+The `StubLlmAdapter` reads fixture-keyed pre-recorded responses from the `fixtures/*.expected.json` files — the full pipeline (Zod validation, confidence annotation, rubric mapping) runs deterministically. Accuracy tests against the real OpenRouter endpoint run only in the nightly job to keep the standard CI fast and avoid unnecessary API usage.
 
 ---
 
@@ -750,7 +750,7 @@ The `StubLlmAdapter` reads fixture-keyed pre-recorded responses from the `fixtur
 | Unit — idempotency | Vitest | Hash lookup: existing `DONE` job → returns cached; existing `FAILED` → creates new; in-progress → returns same jobId |
 | Integration — pipeline | Vitest + `StubLlmAdapter` | Full `ParseJobWorker` run from `QUEUED` to `DONE`; all state-machine transitions; corrective retry path; `FAILED` path |
 | Integration — endpoints | Supertest | 401 missing JWT; 403 wrong owner; 400 bad MIME type; 400 oversized file; 202 on valid enqueue; correct status body in poll |
-| Eval — golden fixtures | Vitest (`eval.test.ts`) | Field accuracy ≥ 85 % on tier-1 fields with `StubLlmAdapter`; nightly with real Ollama |
+| Eval — golden fixtures | Vitest (`eval.test.ts`) | Field accuracy ≥ 85 % on tier-1 fields with `StubLlmAdapter`; nightly with real OpenRouter |
 | E2E — upload to score run | Playwright | Upload a PDF fixture → poll status to `DONE` → advance to review wizard step → accept auto-filled fields → submit confirm → verify score run is triggered |
 | Security | Supertest | `ParseJob` row isolation by `profileId`; raw text absent from captured log output during integration run |
 
@@ -760,9 +760,9 @@ The `StubLlmAdapter` reads fixture-keyed pre-recorded responses from the `fixtur
 
 - **Tesseract runs in worker threads, not the event loop.** `tesseract.js` can block for 30–90 s on large scanned PDFs. Always wrap it in `Piscina` or `tesseract.js`'s built-in scheduler. The BullMQ job timeout is set to 180 s; OCR jobs approaching this limit surface in job-duration metrics.
 - **`pdfjs-dist` text heuristic threshold.** The current heuristic — "< 20 characters extracted from page 1 → treat as scanned" — is a pragmatic default. Resumes with a cover-sheet image followed by a text-layer body can trigger a false `SCANNED_IMAGE`. Monitor misclassification rates on real uploads and tune the threshold or add a multi-page sample.
-- **Ollama `format: "json"` does not guarantee schema conformance.** The model is constrained to emit JSON tokens but can still produce a well-formed JSON object that fails Zod. The corrective retry prompt is essential — do not remove it.
+- **`response_format: { type: "json_object" }` does not guarantee schema conformance.** The model is constrained to emit valid JSON but can still produce a well-formed JSON object that fails Zod. The corrective retry prompt is essential — do not remove it.
 - **Prompt versioning is mandatory.** Each prompt file is named with a version suffix (e.g. `resume-extraction-v1.txt`). Changing a prompt without incrementing the version makes it impossible to correlate accuracy regressions to prompt changes. The active version is logged on every extraction call (`llmPromptVersion` field in the observability log line).
 - **`extractedResume` column is denormalised JSON.** It is never queried by field — always read as a whole blob and re-validated through Zod in the application layer. Do not add Postgres indexes into the jsonb column for Phase 2; defer to Phase 4 if search-by-field is needed.
 - **Fractions are pre-fills, not authoritative.** The confirmed candidate values always win. Never skip the `POST /confirm` step and assume the extracted fractions are final — the candidate must actively confirm (human-in-the-loop is a product requirement per SCOPE §9).
-- **`ALLOW_EXTERNAL_LLM` is a deployment safeguard, not a developer convenience.** Never set it in `docker-compose.yml` or commit it to a `.env.example`. It must be set explicitly by an operator who understands the PII implications.
+- **`OPENROUTER_API_KEY` must never be committed to source control or `.env.example`.** Inject it at runtime via the container host's secrets manager. Rotate the key if a breach is suspected.
 - **Idempotency is profile-scoped, not global.** The same resume file uploaded by two different candidates creates two independent `ParseJob` rows. The hash check is `(fileHash, profileId)` — not `fileHash` alone.

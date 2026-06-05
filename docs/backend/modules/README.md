@@ -24,7 +24,7 @@ Each row links to the module's own deep-dive doc. Key endpoints are cross-refere
 | [**consent-sharing**](./consent-sharing.md) | Create, track, accept, and revoke per-share consent grants that control employer/recruiter access to a report; enforce the consent gate on every report request | `ShareGrant`, `ConsentAuditLog` | `POST /consent/shares` · `GET /consent/shares` · `DELETE /consent/shares/:id` · `POST /consent/shares/:id/accept` (→ API §11) | **1** |
 | [**notifications**](./notifications.md) | Store and deliver in-app (and later email/push) notifications for claim invites, score-ready events, consent requests, and verification outcomes | `Notification` | `GET /notifications` · `POST /notifications/:id/read` · `POST /notifications/read-all` (→ API §16) | **1** (stub) |
 | [**documents-storage**](./documents-storage.md) | Issue presigned MinIO upload URLs; record document metadata after upload confirmation; manage document lifecycle (virus scan queue, deletion, retention) | `DocumentMeta` | `POST /documents/upload-url` · `POST /documents/:id/confirm` · `GET /documents?profileId=` · `DELETE /documents/:id` (→ API §9) | **2** |
-| [**parsing**](./parsing.md) | Orchestrate resume and document parsing via a provider-agnostic adapter (default: self-hosted Ollama + Tesseract OCR); map extracted fields to `SubmissionAnswers`; fall back gracefully on failure | `ParsedDocument`, `ExtractionResult` | Internal only — triggered after `POST /documents/:id/confirm`; results surfaced via `GET /profiles/:profileId/submissions/current` | **2** |
+| [**parsing**](./parsing.md) | Orchestrate resume and document parsing via a provider-agnostic adapter (default: OpenRouter + Tesseract OCR); map extracted fields to `SubmissionAnswers`; fall back gracefully on failure | `ParsedDocument`, `ExtractionResult` | Internal only — triggered after `POST /documents/:id/confirm`; results surfaced via `GET /profiles/:profileId/submissions/current` | **2** |
 | [**verification**](./verification.md) | Accept document verification submissions; run OCR field extraction; manage the manual-review admin queue; award bonus points and toggle the Verified User flag on approval | `VerificationRequest` | `POST /verification` · `GET /verification?profileId=` · `POST /verification/:id/approve` · `POST /verification/:id/reject` (→ API §10) | **3** |
 | [**employer-search**](./employer-search.md) | Enable multi-candidate search, filter, compare, and shortlist for employer/recruiter users; always scoped to profiles with an accepted share grant | `Shortlist` | `GET /employer/search` · `POST /employer/compare` · Shortlist CRUD (→ API §14) | **4** |
 
@@ -47,7 +47,7 @@ flowchart TD
     SC["@stabil/scoring\n(pure scoring engine)"]
     CO["packages/contracts\n(shared Zod schemas)"]
     MINIO["MinIO / S3\n(object storage)"]
-    OLLAMA["Ollama + Tesseract\n(AI + OCR adapters)"]
+    OPENROUTER["OpenRouter + Tesseract\n(AI + OCR adapters)"]
 
     %% ── NestJS guards ────────────────────────────────────────────
     JG["JwtAuthGuard\n+ RolesGuard"]
@@ -91,10 +91,10 @@ flowchart TD
     %% ── Documents / parsing / verification chain ─────────────────
     DOCS -->|"issues presigned URLs\nstores / deletes objects"| MINIO
     PARS -->|"reads uploaded files"| DOCS
-    PARS -->|"extract text via"| OLLAMA
+    PARS -->|"extract text via"| OPENROUTER
     PARS -->|"writes ExtractionResult\n→ updates SubmissionAnswers"| PROF
     VERIF -->|"reads document"| DOCS
-    VERIF -->|"OCR extraction"| OLLAMA
+    VERIF -->|"OCR extraction"| OPENROUTER
     VERIF -->|"awards bonus, sets flag"| PROF
     VERIF -->|"triggers re-score"| SCOR
     VERIF -->|"notifies candidate"| NOTF
@@ -117,7 +117,7 @@ flowchart TD
     style SC fill:#ecfdf5,stroke:#10b981
     style CO fill:#ecfdf5,stroke:#10b981
     style MINIO fill:#fef9c3,stroke:#ca8a04
-    style OLLAMA fill:#fef9c3,stroke:#ca8a04
+    style OPENROUTER fill:#fef9c3,stroke:#ca8a04
     style JG fill:#f1f5f9,stroke:#64748b,stroke-dasharray:4 4
     style AUTH fill:#e8f4fd,stroke:#3b82f6
     style PROF fill:#e8f4fd,stroke:#3b82f6
@@ -191,7 +191,7 @@ Phase 1 `scoring` module ships to production.
 `documents-storage` manages the binary lifecycle — presigned MinIO upload URLs, upload
 confirmation, optional virus-scan queue, deletion. It is a prerequisite for `parsing`.
 
-`parsing` is a background orchestrator: it wires the Ollama LLM adapter and Tesseract
+`parsing` is a background orchestrator: it wires the OpenRouter LLM adapter and Tesseract
 OCR adapter into a single pipeline that fires after a document is confirmed (`POST
 /documents/:id/confirm` → event → `parsing` picks it up). Extracted fields are mapped
 back to `SubmissionAnswers` via `profiles`. Parsing failures are surfaced as a
@@ -206,7 +206,7 @@ its output through the existing `GET /profiles/:profileId/submissions/current` e
 
 `verification` is the **Verified User** and **bonus points** module (SCOPE §5). It:
 - Accepts a document for verification (`POST /verification`).
-- Runs OCR field extraction (via the same Ollama/Tesseract adapter from `parsing`).
+- Runs OCR field extraction (via the same OpenRouter/Tesseract adapter from `parsing`).
 - Routes the extracted fields to a **manual admin review queue** (OCR + manual now;
   KYC/government API adapter defined but not wired — SCOPE §13 item 4).
 - On approval, awards `bonusPoints` and sets `Profile.isVerifiedUser = true`.
@@ -236,7 +236,7 @@ audience rules as the single-report endpoint (SCOPE §6.3).
 Phase 4 also **extends** (not replaces) two Phase 1–2 modules:
 - `scoring` — adds a `testSubScore` slot to the engine input contract for future
   skill-test results (designed-for now, built here — SCOPE §9).
-- `parsing` — extends the Ollama adapter pipeline with AI communication analysis on an
+- `parsing` — extends the OpenRouter adapter pipeline with AI communication analysis on an
   opt-in flag.
 
 ---

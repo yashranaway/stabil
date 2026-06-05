@@ -19,7 +19,7 @@ This is the engineering map for **`apps/api`** — the **NestJS** service that i
 | Validation | **Zod** via **`nestjs-zod`** | One schema source (`packages/types`) shared by web, mobile, API (SCOPE §10). |
 | Jobs | **BullMQ** + **Redis** (`@nestjs/bullmq`) | Parsing · verification · PDF · notifications. |
 | Storage | **MinIO** (S3-compatible) via `@aws-sdk/client-s3` | Presigned URLs; swap to R2/S3 is config-only (SCOPE §10). |
-| AI | **Ollama** behind a provider-agnostic adapter (+ **Tesseract** OCR) | PII stays in-house (SCOPE §10, §11). |
+| AI | **OpenRouter** via a provider-agnostic adapter (+ **Tesseract** OCR) | Hosted LLM gateway; choose no-training / zero-retention providers (SCOPE §10, §11). |
 | Config | **`@nestjs/config`** + Zod env schema | Fail-fast on boot if env is invalid. |
 | Logging | **pino** (`nestjs-pino`) | Structured JSON, request-scoped, PII-redacted. |
 | Health | **`@nestjs/terminus`** | `/api/v1/health` liveness/readiness probes. |
@@ -47,7 +47,7 @@ apps/api/
 │   ├── config/
 │   │   ├── env.schema.ts            # Zod schema for process.env (fail-fast validation)
 │   │   ├── config.module.ts         # @nestjs/config wiring (validate: zodValidate)
-│   │   └── configuration.ts         # typed config factory (db, redis, jwt, minio, ollama, smtp)
+│   │   └── configuration.ts         # typed config factory (db, redis, jwt, minio, openrouter, smtp)
 │   │
 │   ├── common/                      # CROSS-CUTTING — no feature logic here
 │   │   ├── guards/
@@ -76,10 +76,10 @@ apps/api/
 │   │
 │   ├── infra/                        # shared infrastructure adapters (injectable)
 │   │   ├── storage/                  # MinIO/S3 client (presigned URLs)
-│   │   ├── ai/                       # provider-agnostic LLM adapter (Ollama default) + OCR
+│   │   ├── ai/                       # provider-agnostic LLM adapter (OpenRouter default) + OCR
 │   │   ├── queue/                    # BullMQ registration + base processor helpers
 │   │   ├── mail/                     # SMTP transport (used by notifications)
-│   │   └── health/                   # @nestjs/terminus indicators (db, redis, minio, ollama)
+│   │   └── health/                   # @nestjs/terminus indicators (db, redis, minio, openrouter)
 │   │
 │   └── modules/                      # FEATURE modules (one per SCOPE §10 boundary)
 │       ├── auth-accounts/
@@ -205,7 +205,7 @@ Every module owns a clear slice of SCOPE, a set of Prisma entities, and a group 
 | **auth-accounts** | Identity, RBAC, JWT access+refresh, account fields, data-deletion | `User`, `RefreshToken`, `DeletionTicket` | `POST /auth/{register,login,refresh,logout}` · `PATCH /account` · `POST /account/request-data-deletion` | 0 | [auth-accounts.md](./modules/auth-accounts.md) |
 | **profiles** | The scored entity + its answers; claimable/claim; re-scoring source | `Profile`, `Submission` | `POST /profiles` · `GET /profiles/{:id,mine}` · `POST /profiles/employer-submit` · `POST /profiles/:id/claim` · `PUT /profiles/:id/submissions/:mode` | 1 | [profiles.md](./modules/profiles.md) |
 | **scoring** | Wrap `@stabil/scoring`; compute + persist immutable runs + history | `ScoreRun` | `POST /scoring/runs` (idempotent) · `GET /scoring/runs/:id` · `GET /scoring/runs?profileId=` | 1 | [scoring.md](./modules/scoring.md) |
-| **parsing** | Orchestrate resume/doc → suggested `ParameterValues` (Ollama+OCR) | `ParseJob`, `ParsedField` | (internal jobs; surfaces suggestions on `Submission` draft) | 2 | [parsing.md](./modules/parsing.md) |
+| **parsing** | Orchestrate resume/doc → suggested `ParameterValues` (OpenRouter+OCR) | `ParseJob`, `ParsedField` | (internal jobs; surfaces suggestions on `Submission` draft) | 2 | [parsing.md](./modules/parsing.md) |
 | **verification** | Doc verification (OCR + manual review now), Verified User, bonus | `VerificationRequest` | `POST /verification` · `GET /verification?profileId=` · `POST /verification/:id/{approve,reject}` | 3 | [verification.md](./modules/verification.md) |
 | **documents-storage** | Presigned uploads to MinIO, lifecycle, scan, delete | `Document` | `POST /documents/upload-url` · `POST /documents/:id/confirm` · `GET /documents?profileId=` · `DELETE /documents/:id` | 1/2 | [documents-storage.md](./modules/documents-storage.md) |
 | **reports-pdf** | Audience-aware report assembly + PDF export | `PdfJob` | `GET /profiles/:id/report` · `POST /profiles/:id/report/pdf` · `GET …/pdf/:jobId/download` | 1 | [reports-pdf.md](./modules/reports-pdf.md) |
@@ -227,7 +227,7 @@ graph TD
     AUTH["auth-accounts<br/>(JWT · RBAC · accounts)"]
     PROF["profiles<br/>(Profile · Submission)"]
     SCORE["scoring<br/>(wraps @stabil/scoring)"]
-    PARSE["parsing<br/>(Ollama + OCR)"]
+    PARSE["parsing<br/>(OpenRouter + OCR)"]
     VERIF["verification<br/>(Verified User · bonus)"]
     DOCS["documents-storage<br/>(MinIO presigned)"]
     REPORT["reports-pdf<br/>(audience-aware · PDF)"]
@@ -238,7 +238,7 @@ graph TD
     CORE["@stabil/core (rubric)"]:::infra
     ENGINE["@stabil/scoring (engine)"]:::infra
     STORAGE["infra/storage (MinIO)"]:::infra
-    AI["infra/ai (Ollama+OCR)"]:::infra
+    AI["infra/ai (OpenRouter+OCR)"]:::infra
     QUEUE["infra/queue (BullMQ+Redis)"]:::infra
 
     PROF --> AUTH
@@ -443,7 +443,7 @@ graph LR
       Q --> P3[reports-pdf.processor]
       Q --> P4[notifications.processor]
     end
-    P1 --> AI["infra/ai → Ollama (+ Tesseract)"]
+    P1 --> AI["infra/ai → OpenRouter (+ Tesseract)"]
     P2 --> OCR["Tesseract OCR"]
     P3 --> PDF["@react-pdf/renderer"]
     P3 --> MINIO[MinIO]
@@ -456,7 +456,7 @@ graph LR
 
 | Queue | Producer | Job → does | External dep | Phase |
 |-------|----------|------------|--------------|-------|
-| `parsing` | documents-storage (resume upload) | `parse.resume` → text extract → Ollama → suggested `ParameterValues` | Ollama (+ Tesseract) | 2 |
+| `parsing` | documents-storage (resume upload) | `parse.resume` → text extract → OpenRouter → suggested `ParameterValues` | OpenRouter (+ Tesseract) | 2 |
 | `verification` | verification (ID upload) | `verify.extract` → OCR + fields → `in-review` | Tesseract | 3 |
 | `reports-pdf` | reports-pdf (`POST …/report/pdf`) | `render.pdf` → render in **caller's audience** → store object | `@react-pdf/renderer`, MinIO | 1 |
 | `notifications` | profiles · scoring · consent · verification | `notify.*` → email/in-app | SMTP | 1 |
@@ -487,15 +487,16 @@ A single **`@Global()` `PrismaService`** (extends `PrismaClient`) is the only DB
 
 `infra/storage` wraps **`@aws-sdk/client-s3`** pointed at **MinIO** (S3-compatible). Binary uploads go **directly to MinIO via presigned URLs** — the API never proxies file bytes (SCOPE §10 "Storage"). Because everything speaks the S3 API, swapping to Cloudflare R2 / AWS S3 later is **config only**. ID documents (Aadhaar/PAN/passport) are encrypted at rest per [05-security-privacy.md](../architecture/05-security-privacy.md). Module: [documents-storage.md](./modules/documents-storage.md).
 
-### 7.3 AI adapter — Ollama (provider-agnostic)
+### 7.3 AI adapter — OpenRouter (provider-agnostic)
 
-`infra/ai` exposes a thin, **provider-agnostic** `LlmAdapter` interface; the default implementation targets **self-hosted Ollama** (open model), with **Tesseract** for OCR (SCOPE §10, §20). PII never leaves our infrastructure. Swapping to a managed LLM later is a single adapter implementation, not a rewrite.
+`infra/ai` exposes a thin, **provider-agnostic** `LlmAdapter` interface; the default implementation targets **OpenRouter** (a hosted, provider-agnostic LLM gateway) via `OPENROUTER_API_KEY`, with **Tesseract** for OCR (SCOPE §10, §20). Resume and document text is sent to OpenRouter as an external service — choose models/providers that have **no-training / zero-retention** data policies to minimize PII exposure. Swapping to a self-hosted adapter later is a single implementation change, not a rewrite.
 
 ```ts
 export interface LlmAdapter {
   extractFields(input: { text: string; schema: ZodSchema }): Promise<unknown>; // Zod-validated output
 }
-// default: OllamaAdapter (HTTP, local). Selected via config (AI_PROVIDER).
+// default: OpenRouterAdapter (HTTPS, hosted). Selected via config (AI_PROVIDER).
+// Self-hosted alternative: implement LlmAdapter and register it in DI — no pipeline changes.
 ```
 
 Used by the `parsing` (and Phase-4 comms) workers; LLM output is **validated against a shared Zod parse schema** before it touches the rubric layer. Module: [parsing.md](./modules/parsing.md).
@@ -515,8 +516,10 @@ export const EnvSchema = z.object({
   MINIO_ENDPOINT: z.string().url(),
   MINIO_ACCESS_KEY: z.string(),
   MINIO_SECRET_KEY: z.string(),
-  AI_PROVIDER: z.enum(["ollama", "managed"]).default("ollama"),
-  OLLAMA_BASE_URL: z.string().url().default("http://localhost:11434"),
+  AI_PROVIDER: z.enum(["openrouter", "self-hosted"]).default("openrouter"),
+  OPENROUTER_API_KEY: z.string().min(1),
+  OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
+  OPENROUTER_MODEL: z.string().default("openai/gpt-4o-mini"),
   SMTP_URL: z.string().url(),
 });
 export type Env = z.infer<typeof EnvSchema>;
@@ -530,7 +533,7 @@ Secrets are never logged; config is injected via a typed factory (`configuration
 
 ### 7.6 Health — `@nestjs/terminus`
 
-`infra/health` exposes liveness/readiness at `GET /api/v1/health` via `@nestjs/terminus`, with indicators for **Postgres**, **Redis**, **MinIO**, and (when enabled) **Ollama**. Readiness gates deploys/rollouts; liveness drives container restarts (see [../CLOUD.md](../CLOUD.md)).
+`infra/health` exposes liveness/readiness at `GET /api/v1/health` via `@nestjs/terminus`, with indicators for **Postgres**, **Redis**, **MinIO**, and (when enabled) **OpenRouter** reachability. Readiness gates deploys/rollouts; liveness drives container restarts (see [../CLOUD.md](../CLOUD.md)).
 
 ---
 
@@ -549,8 +552,8 @@ Secrets are never logged; config is injected via a typed factory (`configuration
 - [ ] A `ScoreRun` is persisted **unfiltered**; the candidate report omits `employer-only` line-items via `filterForAudience` while keeping an **identical `total` and `tier`**; no candidate-only shape is ever persisted.
 - [ ] All errors conform to RFC 9457 (`type`, `title`, `status`, `requestId`); no stack traces or PII leak.
 - [ ] Mutating security-relevant actions (consent, verification decisions, score runs, deletions) append an immutable `AuditLog` row.
-- [ ] Parsing / verification / PDF / notification work runs via **BullMQ** jobs (idempotent + retryable); the API returns `202` and never blocks on Ollama/OCR/PDF/SMTP.
-- [ ] The app **fails to boot** on invalid env (`env.schema.ts`); `GET /api/v1/health` reports DB/Redis/MinIO/Ollama readiness.
+- [ ] Parsing / verification / PDF / notification work runs via **BullMQ** jobs (idempotent + retryable); the API returns `202` and never blocks on OpenRouter/OCR/PDF/SMTP.
+- [ ] The app **fails to boot** on invalid env (`env.schema.ts`); `GET /api/v1/health` reports DB/Redis/MinIO/OpenRouter readiness.
 
 ---
 

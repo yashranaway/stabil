@@ -316,14 +316,18 @@ See [backend/modules/verification.md](../backend/modules/verification.md) for th
 
 ## 6. AI Processing & PII Boundaries
 
-### 6.1 Self-hosted Ollama as the default (SCOPE §10, §20)
+### 6.1 OpenRouter as the default (SCOPE §10, §20)
 
-Stabil's default AI setup uses **self-hosted Ollama** running an open model (e.g. Llama 3.x) on our own infrastructure. This has a critical privacy consequence: **candidate PII — including resumes, ID document text extracted by OCR, and form answers — never leaves our infrastructure when using the default setup.** There is no third-party API call that transmits raw candidate data to an external service.
+Stabil's default AI setup uses **OpenRouter** — a hosted, provider-agnostic LLM gateway accessed via `OPENROUTER_API_KEY`. This has an important privacy implication: **candidate PII — including resume text extracted from uploads and document text extracted by Tesseract OCR — is sent to OpenRouter (a third party) as part of parsing prompts.**
 
-Why this matters for compliance:
+Privacy considerations:
 - DPDP Act and GDPR both impose obligations on data transfers to third parties and cross-border transfers.
-- Free tiers of major managed LLM providers (e.g. Gemini free tier) have historically included training-on-submitted-data clauses. Sending raw resumes or PII to such endpoints would constitute a data transfer without adequate safeguard.
-- Self-hosting eliminates this risk for the default path.
+- Always select OpenRouter models/providers that offer **no-training / zero-retention** data policies (check the data policy column on [openrouter.ai/models](https://openrouter.ai/models)).
+- A **Data Processing Agreement (DPA)** must be signed with OpenRouter before processing real candidate data in any non-development environment.
+- A cross-border transfer mechanism (standard contractual clauses or equivalent) is required if OpenRouter's infrastructure is outside India/EEA.
+- This is a privacy trade-off vs. the self-hosted approach; the adapter design allows reverting to a self-hosted model if requirements change.
+
+Tesseract OCR runs in-house (bundled in the API container) — only the extracted text, not full document images, is sent to the LLM.
 
 ### 6.2 Provider-agnostic adapter
 
@@ -337,21 +341,21 @@ interface AIProviderAdapter {
 ```
 
 Two implementations exist:
-- `OllamaAdapter` — default; calls `http://localhost:11434`; zero external traffic.
-- `ManagedLLMAdapter` — opt-in; calls a managed API (OpenAI, Anthropic, etc.).
+- `OpenRouterAdapter` — **default**; calls `https://openrouter.ai/api/v1`; model configurable via `OPENROUTER_MODEL`.
+- `OllamaAdapter` — self-hosted fallback; calls a local Ollama instance; zero external PII traffic. Switch by setting `LLM_PROVIDER=ollama`.
 
-### 6.3 Pre-flight checklist before enabling a managed LLM
+### 6.3 Pre-flight checklist before using OpenRouter with real candidate data
 
-Before switching `AI_PROVIDER=managed` in any environment that processes real candidate data, verify all of the following:
+Before enabling `OpenRouterAdapter` in any environment that processes real candidate PII, verify all of the following:
 
-- [ ] Reviewed the provider's current data-use policy; confirmed they do **not** use API submissions for model training without opt-out.
-- [ ] Confirmed opt-out from training is enabled on the account (if available).
-- [ ] Data processing agreement (DPA) signed with the provider.
-- [ ] Cross-border transfer mechanism in place if provider's servers are outside India/EEA (standard contractual clauses or equivalent).
-- [ ] PII minimisation applied: only the minimum fields required for the parsing task are sent; raw ID numbers are stripped before transmission; only extracted text from resumes is sent, not full document images.
-- [ ] Logging of prompts containing PII is disabled on the managed provider's dashboard.
+- [ ] Selected an OpenRouter model/provider with a **no-training / zero-retention** data policy; confirmed this is documented in the provider's current terms.
+- [ ] Data processing agreement (DPA) signed with **OpenRouter** (as the gateway) and, if required, with the underlying model provider.
+- [ ] Cross-border transfer mechanism in place if OpenRouter's or the model provider's servers are outside India/EEA (standard contractual clauses or equivalent).
+- [ ] PII minimisation applied: only extracted text (not raw document images, not ID numbers) is sent in prompts; Tesseract runs in-house before LLM call.
+- [ ] Logging of prompts containing PII is disabled on the OpenRouter dashboard.
 - [ ] Legal review sign-off obtained.
-- [ ] `AI_PROVIDER_AUDIT_ENABLED=true` is set so every managed LLM call is logged internally.
+- [ ] `AI_PROVIDER_AUDIT_ENABLED=true` is set so every LLM call is logged internally (model used, token counts, timestamp; never log prompt content containing PII).
+- [ ] Fallback plan documented: if data-residency requirements tighten, `LLM_PROVIDER=ollama` can be set to switch to a self-hosted model without code changes.
 
 ---
 
@@ -504,7 +508,7 @@ interface AuditLog {
 | **ID document fraud** | Candidate submits a forged Aadhaar/PAN image | High | Manual admin review (Phase 3 now); third-party KYC / DigiLocker integration (Phase 3 later); AV scan on upload; document hash stored to detect re-use of same file |
 | **Refresh token theft** | Attacker steals HttpOnly cookie via XSS or network | High | HttpOnly + Secure + SameSite=Strict cookie; token rotation with reuse detection (§7.2); short access token lifetime (15 min) |
 | **Brute-force login** | Attacker tries many passwords against one account | Medium | Rate limiting (10 req/60s per IP) + account lockout after 5 failures (§7.3) |
-| **Managed LLM PII exfiltration** | Developer enables managed LLM without safeguards | High | Pre-flight checklist (§6.3) required; `AI_PROVIDER` defaults to `ollama`; code review gate before any change |
+| **LLM PII exfiltration** | Resume/ID text sent to OpenRouter with a model that trains on data | High | Pre-flight checklist (§6.3) required; always select no-training/zero-retention models; DPA with OpenRouter mandatory; code review gate before model/provider changes |
 | **Mass deletion / data wipe** | Insider or compromised admin account runs bulk deletes | Critical | Soft-delete + 30-day purge lag allows recovery; admin actions are audit-logged; DB backups on schedule |
 | **Consent bypass** | Employer calls report endpoint without a valid consent and gets data | Critical | `ConsentGuard` is applied before any data read; guard failure throws `ForbiddenException`; integration test asserts 403 without consent |
 
@@ -536,7 +540,7 @@ This checklist must be completed and signed off before Stabil is opened to real 
 - [ ] **(India)** Data fiduciary registration completed under DPDP Act 2023 if required for the category of data processed.
 - [ ] **(EU)** Data Protection Officer (DPO) appointed or exemption confirmed.
 - [ ] **(EU)** Records of Processing Activities (RoPA) document completed.
-- [ ] **(All)** Data processing agreements signed with: hosting provider, MinIO provider (if cloud), any managed LLM provider (if enabled), any third-party KYC provider.
+- [ ] **(All)** Data processing agreements signed with: hosting provider, MinIO provider (if cloud), **OpenRouter** (default LLM gateway), the underlying model provider (if required), any third-party KYC provider.
 
 ### 11.3 Consent mechanics
 
@@ -563,8 +567,11 @@ This checklist must be completed and signed off before Stabil is opened to real 
 
 ### 11.6 AI / LLM
 
-- [ ] **(All)** Ollama (self-hosted) confirmed as default; no managed LLM enabled in production without pre-flight checklist (§6.3).
-- [ ] **(All)** If managed LLM enabled: DPA with provider signed, training opt-out confirmed, cross-border transfer mechanism in place.
+- [ ] **(All)** OpenRouter confirmed as default LLM provider; `OPENROUTER_MODEL` set to a model with a verified no-training / zero-retention data policy.
+- [ ] **(All)** Pre-flight checklist (§6.3) completed in full before processing real candidate data via OpenRouter.
+- [ ] **(All)** DPA signed with OpenRouter; cross-border transfer mechanism in place if applicable.
+- [ ] **(All)** Only extracted text (never raw images, never raw ID numbers) is included in LLM prompts; Tesseract OCR runs in-house.
+- [ ] **(All)** Self-hosted fallback (`LLM_PROVIDER=ollama`) documented and tested; can be activated without code changes if PII policy requires it.
 
 ### 11.7 Retention and lifecycle
 

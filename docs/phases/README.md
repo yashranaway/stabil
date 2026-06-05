@@ -16,7 +16,7 @@ docs, milestones, and internal slicing guidance. Read it alongside `SCOPE.md §9
 |-------|-------|-----------------|---------------|
 | **0 — Foundations** | Infrastructure, tooling, shared packages | A running, CI-green monorepo with auth shell, DB, and a verified scoring package | Turborepo builds all apps; CI passes; auth (register/login, 4 roles) works end-to-end; `@stabil/scoring` has ≥ 90 % unit-test coverage; Prisma migrations applied to a dev DB; MinIO reachable |
 | **1 — Core Scoring** | Forms, both modes, full score lifecycle, report views | End-to-end stability score and report for both modes (Fresher + Professional), with accounts and re-scoring | Both mode forms submit and score deterministically; 5-tier mapping is correct; candidate-view hides sensitive attrs; employer-view shows full breakdown; PDF export works; explicit per-share consent gate enforced; re-scoring updates history |
-| **2 — Parsing** | Automated resume + document extraction | Parameters auto-filled from uploaded resumes/documents via local LLM + OCR | Ollama adapter extracts structured fields from a PDF resume and populates form values; OCR extracts text from scanned images; extracted values are editable before scoring; parsing failures fall back gracefully with a user-facing message |
+| **2 — Parsing** | Automated resume + document extraction | Parameters auto-filled from uploaded resumes/documents via OpenRouter LLM + OCR | OpenRouter adapter extracts structured fields from a PDF resume and populates form values; OCR extracts text from scanned images; extracted values are editable before scoring; parsing failures fall back gracefully with a user-facing message |
 | **3 — Verification** | Document validation and Verified User flag | Bonus points awarded for validated identity documents; Verified User badge displayed | At least one India document type (Aadhaar or PAN) and one international type (passport) accepted; OCR + manual-review queue operational; bonus points update the score and reflect in the report; verified badge shown on candidate and employer views |
 | **4 — Enhancements** | Skill tests, richer communication analysis, comparison dashboard | Post-POC features that extend the platform without changing the core scoring contract | Skill-test sub-score slots into `@stabil/scoring` without breaking existing scores; AI communication analysis replaces self-rating on an opt-in flag; employer multi-candidate comparison and ranking dashboard is usable |
 
@@ -31,7 +31,7 @@ be developed in parallel once Phase 1 is complete; both feed Phase 4.
 flowchart LR
     P0["Phase 0\nFoundations\n(monorepo · auth · DB · CI)"]
     P1["Phase 1\nCore Scoring\n(forms · engine · report · accounts)"]
-    P2["Phase 2\nParsing\n(Ollama · OCR · auto-fill)"]
+    P2["Phase 2\nParsing\n(OpenRouter · OCR · auto-fill)"]
     P3["Phase 3\nVerification\n(doc validation · bonus · badge)"]
     P4["Phase 4\nEnhancements\n(skill tests · AI comms · dashboard)"]
 
@@ -82,9 +82,9 @@ flowchart LR
 | Workstream | Work |
 |------------|------|
 | **Frontend** | Resume upload step added to Fresher and Professional forms, parsing progress indicator, extracted-values review/edit UI, document upload page (parsing tab) |
-| **Backend** | `ParsingModule` — Ollama adapter, Tesseract OCR adapter, extraction orchestrator, provider-agnostic interface, fallback handling, retry/error reporting |
+| **Backend** | `ParsingModule` — OpenRouter adapter, Tesseract OCR adapter, extraction orchestrator, provider-agnostic interface, fallback handling, retry/error reporting |
 | **Data** | `ParsedDocument`, `ExtractionResult` models; link extracted values to `ParameterValue`; migration |
-| **Infra** | Ollama service wired in dev/staging (Docker container or self-hosted); MinIO lifecycle rules for raw uploads; Tesseract binary in API container image |
+| **Infra** | OpenRouter API key configured in API env (`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`); MinIO lifecycle rules for raw uploads; Tesseract binary in API container image |
 
 ### Phase 3 — Verification
 
@@ -102,7 +102,7 @@ flowchart LR
 | **Frontend** | Skill-test UI (in-platform assessment flow), AI communication analysis opt-in prompt, employer comparison/ranking dashboard (table + sort + charts), multi-candidate selection and side-by-side view |
 | **Backend** | `ScoringModule` extension: `testSubScore` slot in engine contract; `ParsingModule` extension: AI communication analysis pipeline; `EmployerSearchModule` — search, filter, rank, paginate candidates |
 | **Data** | `SkillTestResult`, `CommunicationAnalysis` models; `ScoreRun` schema extended for sub-scores; migration |
-| **Infra** | Skill-test delivery infrastructure (static-assessment runner or third-party embed); AI communication analysis model configuration in Ollama adapter |
+| **Infra** | Skill-test delivery infrastructure (static-assessment runner or third-party embed); AI communication analysis model configuration in the LLM adapter (OpenRouter by default) |
 
 ---
 
@@ -150,7 +150,7 @@ phase; **extended** means the phase adds a meaningful section to an already-exis
 |------|-----|------|
 | Frontend | [`frontend/pages/mode-selection-and-forms.md`](../frontend/pages/mode-selection-and-forms.md) | extended — resume upload step, extracted-value review UI |
 | Frontend | [`frontend/pages/documents-and-verification.md`](../frontend/pages/documents-and-verification.md) | primary (parsing tab) — upload flow, parsing progress |
-| Backend | [`backend/modules/parsing.md`](../backend/modules/parsing.md) | primary — Ollama adapter, OCR, orchestrator, fallbacks |
+| Backend | [`backend/modules/parsing.md`](../backend/modules/parsing.md) | primary — OpenRouter adapter, OCR, orchestrator, fallbacks |
 | Backend | [`backend/modules/documents-storage.md`](../backend/modules/documents-storage.md) | primary — uploads, MinIO/S3, lifecycle |
 | Phase | [`phases/phase-2-parsing.md`](phase-2-parsing.md) | primary |
 
@@ -236,7 +236,7 @@ contract itself changes in a breaking way (e.g. the 0–1500 scale is redefined)
 |---------|-------------|----------------|
 | **v0.0** | Monorepo scaffolded; CI green; auth shell; `@stabil/scoring` unit-tested | Phase 0 |
 | **v0.1** | End-to-end POC — both modes scored from forms; report viewable; PDF export; per-share consent; accounts | Phase 1 |
-| **v0.2** | Parsing enabled — resumes and documents auto-fill form parameters via Ollama + OCR | Phase 2 |
+| **v0.2** | Parsing enabled — resumes and documents auto-fill form parameters via OpenRouter + OCR | Phase 2 |
 | **v0.3** | Verification live — Aadhaar/PAN + international ID validated; Verified User flag and bonus points awarded | Phase 3 |
 | **v1.0** | Full platform — skill tests, AI communication analysis, employer comparison dashboard | Phase 4 |
 
@@ -279,7 +279,7 @@ increments that are independently demoable — rather than horizontal layers (e.
 4. **Stub then deepen.** It is acceptable to stub a dependency within a phase:
    - Phase 1 can hardcode a single parameter weight during Increment 1a and fill in
      the full parameter table by Increment 1c.
-   - Phase 2 can return a hardcoded parsed result from the Ollama adapter during
+   - Phase 2 can return a hardcoded parsed result from the LLM adapter during
      Increment 2a while the real prompt engineering is refined.
 
 5. **Never relax the DoD.** Stubs must be tracked as follow-up tasks within the same

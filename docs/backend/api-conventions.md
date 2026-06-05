@@ -114,7 +114,7 @@ export interface FieldError {
 | `payload-too-large` | 413 | Upload `sizeBytes` exceeds per-kind maximum |
 | `unsupported-media-type` | 415 | Content-type not in the allow-list |
 | `internal` | 500 | Unhandled exception |
-| `upstream-unavailable` | 503 | MinIO or Ollama unreachable |
+| `upstream-unavailable` | 503 | MinIO or OpenRouter unreachable |
 
 ### Global exception filter implementation
 
@@ -954,7 +954,7 @@ Every NestJS handler must return the correct status code. Use `@HttpCode()` on h
 | `422 Unprocessable Entity` | Zod validation failure on a well-formed request — response always includes `errors[]`. |
 | `429 Too Many Requests` | Rate bucket exceeded — response includes `Retry-After`. |
 | `500 Internal Server Error` | Unhandled exception. |
-| `503 Service Unavailable` | Upstream dependency unreachable (MinIO, Ollama) — response includes `Retry-After`. |
+| `503 Service Unavailable` | Upstream dependency unreachable (MinIO, OpenRouter) — response includes `Retry-After`. |
 
 ### `@HttpCode` usage pattern
 

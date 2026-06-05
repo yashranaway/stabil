@@ -719,7 +719,7 @@ When a candidate submits `DELETE /api/v1/account`, the full purge pipeline runs 
 **Goal:** candidates can upload resumes that the parsing module reads from MinIO.
 
 - Add `resume` category to the upload flow (already modelled; enable in Phase 2).
-- `ParsingService` calls `StoragePort.presignedGet()` (with a long internal TTL, e.g. 1 hour) to obtain a URL it streams from MinIO for Ollama/Tesseract processing — or calls `headObject` + direct stream via MinIO SDK.
+- `ParsingService` calls `StoragePort.presignedGet()` (with a long internal TTL, e.g. 1 hour) to obtain a URL it streams from MinIO for OpenRouter/Tesseract processing — or calls `headObject` + direct stream via MinIO SDK.
 - Ensure `Document.status` transitions (`PENDING` → `CONFIRMED`) gate parse jobs (parse only confirmed documents).
 - Cross-reference: [backend/modules/parsing.md](parsing.md).
 

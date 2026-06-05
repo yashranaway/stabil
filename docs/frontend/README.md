@@ -257,7 +257,7 @@ A page-by-page inventory (purpose, audience, route, phase, components, data need
 
 ## 4. Data layer
 
-The client talks to exactly one backend: the NestJS API at `/api/v1` ([04-api-contracts.md](../architecture/04-api-contracts.md)). Nothing else (DB, MinIO, Ollama) is reachable from the browser. Two libraries do the heavy lifting: a **typed API client** (transport + contracts) and **TanStack Query** (server-state cache).
+The client talks to exactly one backend: the NestJS API at `/api/v1` ([04-api-contracts.md](../architecture/04-api-contracts.md)). Nothing else (DB, MinIO, OpenRouter) is reachable from the browser. Two libraries do the heavy lifting: a **typed API client** (transport + contracts) and **TanStack Query** (server-state cache).
 
 ### 4.1 The typed API client (`packages/api-client`)
 

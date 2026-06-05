@@ -19,7 +19,7 @@ The single most important boundary in the whole product:
 flowchart LR
   subgraph inputs["Raw signals"]
     F["Forms<br/>(self-reported)"]
-    P["Resume / doc parsing<br/>(Phase 2, Ollama + OCR)"]
+    P["Resume / doc parsing<br/>(Phase 2, OpenRouter LLM + OCR)"]
     A["Assessment / certs<br/>(comms, skill tests Phase 4)"]
     V["Verified documents<br/>(Phase 3)"]
   end
@@ -647,11 +647,11 @@ The `[0,1] × max` model is deliberately uniform so new signal sources slot in a
 
 ### 8.1 Phase 2 — resume & document parsing supplies fractions
 
-Parsing (Ollama + Tesseract OCR) **auto-fills the same form fields** the rubric layer already consumes. The parser's job ends at producing raw answers (years, project list, GPA); those flow through the **same rubric functions** to the **same** `ParameterValues`. The engine sees no difference between a form-entered "5 years" and a parsed "5 years".
+Parsing (OpenRouter LLM + Tesseract OCR) **auto-fills the same form fields** the rubric layer already consumes. The parser's job ends at producing raw answers (years, project list, GPA); those flow through the **same rubric functions** to the **same** `ParameterValues`. The engine sees no difference between a form-entered "5 years" and a parsed "5 years".
 
 ```mermaid
 flowchart LR
-  PR["Phase 2 parser<br/>(Ollama + OCR)"] --> RA["raw answers<br/>(years, GPA, projects…)"]
+  PR["Phase 2 parser<br/>(OpenRouter LLM + OCR)"] --> RA["raw answers<br/>(years, GPA, projects…)"]
   FORM["Phase 1 forms"] --> RA
   RA --> RUB["rubric layer → fractions"]
   RUB --> ENG["computeScore (UNCHANGED)"]

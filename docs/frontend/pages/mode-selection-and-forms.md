@@ -29,7 +29,7 @@ This page group covers two sequential screens for a candidate's first scoring ru
 | Phase | What changes on this page group |
 |-------|----------------------------------|
 | **Phase 1** | Form-only intake: all parameters are self-reported via the wizard. No document-parsing pre-fill. |
-| **Phase 2** | A `REVIEW EXTRACTED DATA` pre-fill step is inserted **before** the mode-specific steps. The user sees auto-extracted fields from their uploaded resume (Ollama + Tesseract output), corrects errors, and confirms — these then seed the wizard fields. |
+| **Phase 2** | A `REVIEW EXTRACTED DATA` pre-fill step is inserted **before** the mode-specific steps. The user sees auto-extracted fields from their uploaded resume (OpenRouter LLM + Tesseract OCR output), corrects errors, and confirms — these then seed the wizard fields. |
 | **Phase 3** | Verification upsell banners added to relevant steps (e.g. "Upload a government ID after submit for +150 bonus points"). No structural wizard changes. |
 
 ---
@@ -861,7 +861,7 @@ All queries/mutations use **TanStack Query** with typed API client functions fro
 | `useSaveDraft` | `PATCH /api/v1/form-submissions/:id/draft` | Partial auto-save during wizard. |
 | `useSubmitForm` | `PATCH /api/v1/form-submissions/:id` `{ status: "submitted" }` | Finalise the submission. |
 | `useCreateScoreRun` | `POST /api/v1/scoring/runs` | Trigger scoring. Requires `Idempotency-Key`. Returns `{ runId, total, tier }`. |
-| `useResumeParsed` | `GET /api/v1/profiles/me/parsed-resume` | **Phase 2 only**. Fetch pre-extracted field values from Ollama parser. |
+| `useResumeParsed` | `GET /api/v1/profiles/me/parsed-resume` | **Phase 2 only**. Fetch pre-extracted field values from the LLM parser (via OpenRouter). |
 
 All mutations use `onError` to surface `toast.error` with the problem+json `detail` string and `onSuccess` to advance the wizard step.
 

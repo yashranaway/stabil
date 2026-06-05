@@ -15,7 +15,7 @@ Phase 0 is the **plumbing sprint**: every runtime, package boundary, tool, and C
 | 2 | TypeScript is strict across the monorepo | `pnpm typecheck` exits 0 |
 | 3 | Lint + format pass | `pnpm lint` exits 0; `prettier --check` passes |
 | 4 | All package unit tests pass | `pnpm test` exits 0 |
-| 5 | Local infra boots | `docker compose up -d` → Postgres, MinIO, Ollama healthy |
+| 5 | Local infra boots | `docker compose up -d` → Postgres, Redis, MinIO healthy |
 | 6 | Database is migrated | `prisma migrate deploy` applies the baseline migration; `User` + `AuthIdentity` tables exist |
 | 7 | Auth vertical slice works | `POST /api/v1/auth/register` + `POST /api/v1/auth/login` return a signed JWT |
 | 8 | CI is green | GitHub Actions workflow passes on every push to `main` and every PR |
@@ -31,7 +31,7 @@ Phase 0 is the **plumbing sprint**: every runtime, package boundary, tool, and C
 - App scaffolds that build and run as empty shells: `apps/api`, `apps/web`, `apps/mobile`
 - Prisma schema + first migration (`User`, `AuthIdentity` tables)
 - Thin auth vertical slice: register / login → JWT (proves the stack end-to-end)
-- Local `docker-compose.yml`: Postgres, MinIO, Ollama
+- Local `docker-compose.yml`: Postgres, Redis, MinIO
 - GitHub Actions CI: install → lint → typecheck → test → build, with Turborepo remote cache
 - Tooling: ESLint, Prettier, Commitlint + Husky (conventional commits)
 - Baseline error model (RFC 9457 `application/problem+json`) in the API
@@ -43,7 +43,7 @@ Phase 0 is the **plumbing sprint**: every runtime, package boundary, tool, and C
 - The rubric layer implementation inside `packages/core` (scaffold only here; logic in Phase 1)
 - Profile, report, document-upload, or consent flows
 - MinIO file operations (wired in Phase 2)
-- Ollama / AI parsing (wired in Phase 2)
+- OpenRouter / AI parsing (wired in Phase 2)
 - `packages/ui` shared component library (optional; can be added mid-Phase 1 if needed)
 - Playwright e2e tests (Phase 1)
 - PDF generation (Phase 1)
@@ -58,7 +58,7 @@ Phase 0 is the **plumbing sprint**: every runtime, package boundary, tool, and C
 | **WS-B** App scaffolds | `apps/api`, `apps/web`, `apps/mobile` empty shells |
 | **WS-C** Data layer | Prisma schema, first migration, Postgres in Docker |
 | **WS-D** Auth slice | `auth` NestJS module: register / login / JWT guard |
-| **WS-E** Infra | `docker-compose.yml`, MinIO, Ollama (no usage yet) |
+| **WS-E** Infra | `docker-compose.yml`, MinIO, Redis |
 | **WS-F** CI | GitHub Actions workflow, Turborepo remote cache config |
 | **WS-G** Tooling | ESLint, Prettier, Commitlint, Husky, `.editorconfig` |
 | **WS-H** Observability foundations | Pino logger, RFC 9457 error filter |
@@ -552,6 +552,9 @@ File: `docker-compose.yml` at the **monorepo root**.
 ```yaml
 version: "3.9"
 
+# AI parsing (Phase 2+) uses OpenRouter — an external, hosted LLM gateway.
+# There is NO Ollama container. Set OPENROUTER_API_KEY in your .env to enable parsing.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -565,6 +568,16 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U stabil"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -586,19 +599,9 @@ services:
       timeout: 5s
       retries: 5
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # Pull a small model on first start (optional; comment out if offline)
-    # entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull llama3.2:3b && wait"]
-
 volumes:
   postgres_data:
   minio_data:
-  ollama_data:
 ```
 
 - [ ] Create `docker-compose.yml` at monorepo root with the content above.
@@ -607,14 +610,20 @@ volumes:
   # Postgres
   DATABASE_URL=postgresql://stabil:stabil@localhost:5432/stabil
 
+  # Redis
+  REDIS_URL=redis://localhost:6379
+
   # MinIO
   MINIO_ENDPOINT=localhost
   MINIO_PORT=9000
   MINIO_ACCESS_KEY=stabil
   MINIO_SECRET_KEY=stabil123
 
-  # Ollama
-  OLLAMA_BASE_URL=http://localhost:11434
+  # OpenRouter (AI parsing — Phase 2+)
+  # Use a model with a no-training / zero-retention policy.
+  OPENROUTER_API_KEY=sk-or-...
+  OPENROUTER_MODEL=openai/gpt-4o-mini
+  OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
   # Auth
   JWT_SECRET=changeme-at-least-32-chars
@@ -806,7 +815,7 @@ These are already covered partially in WS-D3 (Pino). Additional checklist:
 | `apps/web` shell | `apps/web/` | Next.js 15 App Router + Tailwind + shadcn/ui |
 | `apps/mobile` shell | `apps/mobile/` | Expo + Expo Router + NativeWind |
 | Prisma schema + migration | `apps/api/prisma/` | `users` + `auth_identities` tables |
-| `docker-compose.yml` | repo root | Postgres, MinIO, Ollama |
+| `docker-compose.yml` | repo root | Postgres, Redis, MinIO |
 | GitHub Actions CI | `.github/workflows/ci.yml` | Full pipeline with Turbo cache |
 | Tooling | repo root | ESLint, Prettier, Commitlint, Husky, `.editorconfig` |
 | Env example files | repo root + `apps/api/` | `.env.example` with all required vars |
@@ -839,7 +848,7 @@ All of the following must be true before Phase 0 is closed.
 
 ### Infrastructure
 
-- [ ] `docker compose up -d` brings Postgres, MinIO, and Ollama to `healthy` status.
+- [ ] `docker compose up -d` brings Postgres, Redis, and MinIO to `healthy` status.
 - [ ] `pnpm --filter @stabil/api prisma migrate deploy` applies the baseline migration against the Docker Postgres instance without errors.
 - [ ] `psql postgresql://stabil:stabil@localhost:5432/stabil -c "\d"` shows `users` and `auth_identities` tables.
 

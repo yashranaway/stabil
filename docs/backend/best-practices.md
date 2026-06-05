@@ -578,15 +578,16 @@ function maskId(value: string): string {
 
 Every request carries a **correlation ID** (`X-Request-Id` header). It is generated at the HTTP ingress layer if absent, attached to all Pino log lines via `genReqId`, and returned in the response header.
 
-Service-to-service calls (e.g. from the NestJS API to Ollama, to a background worker) must propagate the correlation ID in an `X-Request-Id` header so a single user-initiated action can be traced across the system.
+Service-to-service calls (e.g. from the NestJS API to OpenRouter, to a background worker) must propagate the correlation ID in an `X-Request-Id` header so a single user-initiated action can be traced across the system.
 
 ```typescript
-// In services that make HTTP calls (e.g. OllamaAdapter):
+// In services that make HTTP calls (e.g. OpenRouterAdapter):
 async parseResume(rawText: string, correlationId: string): Promise<ParsedResumeDTO> {
-  const response = await fetch(`${this.ollamaBaseUrl}/api/generate`, {
+  const response = await fetch(`${this.openRouterBaseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Authorization': `Bearer ${this.apiKey}`,
       'X-Request-Id': correlationId,
     },
     body: JSON.stringify({ ... }),
@@ -653,8 +654,10 @@ export const EnvSchema = z.object({
   MINIO_BUCKET_DOCUMENTS: z.string().min(1),
 
   // AI parsing
-  AI_PROVIDER:    z.enum(['ollama', 'managed']).default('ollama'),
-  OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
+  AI_PROVIDER:          z.enum(['openrouter', 'self-hosted']).default('openrouter'),
+  OPENROUTER_API_KEY:   z.string().min(1),
+  OPENROUTER_BASE_URL:  z.string().url().default('https://openrouter.ai/api/v1'),
+  OPENROUTER_MODEL:     z.string().default('openai/gpt-4o-mini'),
 
   // Redis (throttler / queues)
   REDIS_URL: z.string().url().startsWith('redis'),
@@ -976,7 +979,7 @@ For jobs that perform multiple DB writes (e.g. the account deletion pipeline), w
 
 ### 6.2 Retries with Exponential Backoff
 
-Configure BullMQ jobs with retries and backoff. Never configure jobs with zero retries for operations that touch external systems (MinIO, Ollama).
+Configure BullMQ jobs with retries and backoff. Never configure jobs with zero retries for operations that touch external systems (MinIO, OpenRouter).
 
 ```typescript
 // Queue producer — define retry policy per job type
@@ -995,7 +998,7 @@ await this.documentQueue.add(
 
 | Job type | Attempts | Backoff | Notes |
 |----------|----------|---------|-------|
-| `parse-resume` (Ollama) | 5 | exponential, 2 s base | LLM can be slow/unavailable |
+| `parse-resume` (OpenRouter) | 5 | exponential, 2 s base | LLM can be slow/unavailable |
 | `send-notification` | 3 | exponential, 5 s base | email/push provider transient errors |
 | `consent-expiry` (nightly) | 3 | exponential, 30 s base | low urgency, retry is fine |
 | `account-purge` | 3 | exponential, 60 s base | high-stakes; must succeed eventually |
@@ -1039,7 +1042,7 @@ export class DocumentDLQProcessor {
 | Do | Don't |
 |----|-------|
 | Make every job handler idempotent — safe to run multiple times for the same input. | Assume a job runs exactly once. |
-| Use exponential backoff for jobs that call external services (Ollama, MinIO, email). | Retry immediately with `delay: 0` — it hammers a failing service. |
+| Use exponential backoff for jobs that call external services (OpenRouter, MinIO, email). | Retry immediately with `delay: 0` — it hammers a failing service. |
 | Set `removeOnFail: false` so failed jobs are visible in Bull Board / the DLQ. | Set `removeOnFail: true` — failed jobs disappear without a trace. |
 | Use a deduplication `jobId` (e.g. `parse-resume:{documentId}`) to prevent duplicate enqueues. | Enqueue the same job twice if the producer is retried. |
 | Alert on DLQ entries — a job in the DLQ means a user action failed permanently. | Let DLQ entries accumulate silently. |
@@ -1138,7 +1141,7 @@ this.$on('query', (e: Prisma.QueryEvent) => {
 
 ### 7.3 Distributed Tracing
 
-In Phase 1 the API is a single service, so traces are primarily useful for identifying slow Prisma queries and Ollama calls. Instrument with OpenTelemetry (`@opentelemetry/sdk-node`):
+In Phase 1 the API is a single service, so traces are primarily useful for identifying slow Prisma queries and OpenRouter calls. Instrument with OpenTelemetry (`@opentelemetry/sdk-node`):
 
 ```typescript
 // apps/api/src/tracing.ts — loaded before NestJS bootstrap

@@ -648,7 +648,7 @@ The final wizard step is a **read-only summary** of all collected answers before
 4. Clears the localStorage draft.
 5. Navigates to the candidate report dashboard.
 
-**Phase 2 extension — "Review extracted data":** when resume parsing is live (Phase 2), the server suggests pre-filled values from the Ollama parse job. A dedicated variant of the Review step shows the AI-extracted answers alongside a confidence indicator and lets the candidate confirm, edit, or reject each suggestion before they are merged into the draft. This variant renders the same `WizardStep` `component` prop interface with an additional `parsedSuggestions?: ParsedSuggestions` prop; the wizard controller passes it only when a parse result is available (see [architecture/01-overview.md](../architecture/01-overview.md) §4.6).
+**Phase 2 extension — "Review extracted data":** when resume parsing is live (Phase 2), the server suggests pre-filled values from the LLM parse job (via OpenRouter). A dedicated variant of the Review step shows the AI-extracted answers alongside a confidence indicator and lets the candidate confirm, edit, or reject each suggestion before they are merged into the draft. This variant renders the same `WizardStep` `component` prop interface with an additional `parsedSuggestions?: ParsedSuggestions` prop; the wizard controller passes it only when a parse result is available (see [architecture/01-overview.md](../architecture/01-overview.md) §4.6).
 
 ### 3.6 Wizard state diagram
 

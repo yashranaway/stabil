@@ -1,6 +1,6 @@
 # Stabil — Stability Check Platform · Scope
 
-> **Status:** Draft v0.4 — derived from the handwritten POC (`poc.png`), a clarifying Q&A, and a confirmed tech stack (free, self-hosted AI + storage for now).
+> **Status:** Draft v0.5 — derived from the handwritten POC (`poc.png`), a clarifying Q&A, and a confirmed tech stack (OpenRouter for LLM parsing; self-hosted storage).
 > **Date:** 2026-06-06
 > **About this doc:** Shared understanding of the project before design/build. All major product decisions below are **confirmed** via Q&A. Remaining unknowns are **design-time calibration details** (exact weights, tier bands, tech stack) and are listed in §13.
 
@@ -44,11 +44,11 @@ Because candidates see their own report, **explainability** and a **"how to impr
 | 17 | Accounts | **Yes**, with re-scoring over time (improvement loop) |
 | 18 | Consent | **Explicit per-share consent** before any employer/recruiter sees a report |
 | 19 | Data retention | **Keep while account active; delete on request** |
-| 20 | AI processing | **Free, provider-agnostic** — self-hosted **Ollama** (open model) as the default; PII stays in-house. Swappable to a managed provider later (see §10) |
+| 20 | AI processing | **Provider-agnostic** — **OpenRouter** (hosted LLM gateway, API-key based) as the default; model configurable via `OPENROUTER_MODEL` (e.g. `openai/gpt-4o-mini`). Choose no-training / zero-retention models; adapter allows swap to a self-hosted model if stricter PII handling is required later (see §10) |
 | 21 | Platform | **Web app + mobile app** |
 | 22 | Report delivery | **In-app dashboard + PDF export** |
 | 23 | Employer multi-candidate view | **Phased** — single reports in POC; comparison/ranking dashboard later |
-| 24 | Tech stack | **TypeScript monorepo** — Next.js (web) · Expo/React Native (mobile) · NestJS API · PostgreSQL + Prisma · free/local LLM (Ollama) for parsing · MinIO storage (see §10) |
+| 24 | Tech stack | **TypeScript monorepo** — Next.js (web) · Expo/React Native (mobile) · NestJS API · PostgreSQL + Prisma · **OpenRouter** (hosted LLM gateway) for parsing · MinIO storage (see §10) |
 
 ---
 
@@ -181,7 +181,7 @@ Delivered as an **in-app dashboard (web + mobile) + downloadable PDF**, containi
 ## 9. Delivery Phases
 
 - **Phase 1 — Core scoring engine + report:** Both modes (user self-selects), **form-based input**, mode-specific + common scoring blocks, fixed weights, 0–1500 scale, 5-tier mapping, accounts with re-scoring, candidate & employer report views (dashboard + PDF), explicit per-share consent.
-- **Phase 2 — Resume & document parsing:** Automated extraction (self-hosted/local LLM + OCR) from resumes/documents to auto-fill and enrich parameters.
+- **Phase 2 — Resume & document parsing:** Automated extraction (OpenRouter LLM + Tesseract OCR) from resumes/documents to auto-fill and enrich parameters.
 - **Phase 3 — Verification & bonus (Verified User):** Document validation (Aadhaar/PAN + international), trust flags, bonus points; OCR + manual review first, KYC/government APIs later.
 
 **Post-POC / later enhancements** (designed-for now, built later): in-platform skill tests (e.g. Python test) feeding a test sub-score; richer AI-based communication assessment (written/spoken); employer/recruiter **multi-candidate comparison & ranking dashboard**.
@@ -202,14 +202,14 @@ Delivered as an **in-app dashboard (web + mobile) + downloadable PDF**, containi
 | **Database** | PostgreSQL + Prisma | Relational fit for profiles, parameters, scores, audit; data-driven parameter model maps to tables |
 | **Auth** | Role-based (candidate / employer / recruiter / admin), JWT sessions for mobile | Drives differentiated views (§6.3) and per-share consent (§6.2) |
 | **Storage** | **MinIO** (self-hosted, S3-compatible) — free; local disk for dev | S3-compatible API means a later swap to Cloudflare R2 / AWS S3 / Supabase is a config change, not a rewrite |
-| **AI parsing** | **Provider-agnostic adapter; free default = self-hosted Ollama** (open model, e.g. Llama 3.x) + **Tesseract** OCR for scans (Phase 2) | Zero cost and PII never leaves our infra; swap to a managed LLM later via one adapter. Keeps the codebase TS-only |
+| **AI parsing** | **Provider-agnostic adapter; default = OpenRouter** (hosted LLM gateway, API-key based; model via `OPENROUTER_MODEL`, e.g. `openai/gpt-4o-mini`) + **Tesseract** OCR for scans (Phase 2) | Broad model selection; choose providers with no-training / zero-retention policies. Adapter allows swap to a self-hosted model later for stricter PII control. Keeps the codebase TS-only |
 | **Validation** | Zod (shared schemas) | One source of truth for form/API/parse shapes |
 | **PDF** | `@react-pdf/renderer` | Report export (§8) |
 | **Testing** | Vitest (unit, esp. scoring) + Playwright (web e2e) | Confidence in the deterministic engine and core flows |
 | **Deploy** | Vercel (web) · Expo EAS (mobile) · container host + managed Postgres (API/DB) | Standard, low-ops for a POC |
 
 - **Parameter model:** parameters are data-driven (weight, source, visibility level, mode applicability) so scoring is configurable and explainable.
-- **AI processing:** free and **provider-agnostic** — the default is self-hosted **Ollama**, so candidate PII never leaves our infrastructure; a thin adapter lets us swap to a managed LLM later. (Avoid free *managed* tiers such as Gemini's free tier for raw PII — several train on submitted data.)
+- **AI processing:** **provider-agnostic** — the default is **OpenRouter** (a hosted, provider-agnostic LLM gateway accessed via `OPENROUTER_API_KEY`). Resume and ID PII is sent to OpenRouter as a third party; always select OpenRouter models/providers with **no-training / zero-retention** data policies and sign a DPA. The thin `LlmAdapter` interface means a self-hosted model can be substituted later if stricter in-house PII handling is required.
 - **Storage:** free **MinIO** (S3-compatible) now; because everything talks the S3 API, moving to Cloudflare R2 / AWS S3 later is configuration only.
 
 ---

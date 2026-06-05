@@ -1042,7 +1042,7 @@ Mark all my notifications read.
 | `413 / 415` | Upload too large / unsupported media type. |
 | `422 Unprocessable Entity` | Zod validation failure (`errors[]` populated). |
 | `429 Too Many Requests` | Rate limit hit (`Retry-After`). |
-| `500 / 503` | Internal error / upstream (MinIO, Ollama) unavailable. |
+| `500 / 503` | Internal error / upstream (MinIO, OpenRouter) unavailable. |
 
 ---
 

@@ -822,7 +822,7 @@ These packages are imported identically by `apps/web`, `apps/mobile`, and `apps/
 - **Never import `next/*` from `apps/mobile`** — and vice versa for `react-native` in `apps/web`.
 - **Never re-implement the scoring math in either client** — always delegate to `@stabil/core` (rubric) + `@stabil/scoring` (engine), or call the API. Two score implementations will drift.
 - **Never store JWT in `AsyncStorage`** — exclusively `expo-secure-store` (§3).
-- **Never call Ollama or MinIO directly from the mobile app** — all I/O goes through `/api/v1`.
+- **Never call OpenRouter, MinIO, or any external service directly from the mobile app** — all I/O goes through `/api/v1`.
 
 ---
 

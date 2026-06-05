@@ -803,7 +803,7 @@ export async function seedConsentFixture(prisma: PrismaClient) {
 
 ### 6.3 Golden-resume fixtures (parsing evaluation)
 
-Golden fixtures are fixed-format resumes stored in `apps/api/src/test/fixtures/resumes/` alongside expected parse outputs. Used in Phase 2 to evaluate the Ollama parsing pipeline without re-running inference:
+Golden fixtures are fixed-format resumes stored in `apps/api/src/test/fixtures/resumes/` alongside expected parse outputs. Used in Phase 2 to evaluate the OpenRouter parsing pipeline without re-running inference:
 
 ```
 apps/api/src/test/fixtures/resumes/
@@ -830,7 +830,7 @@ export const expected: Partial<SubmissionAnswers> = {
 export const tolerance = { totalExperienceYears: 0.5, averageTenureYears: 0.3 };
 ```
 
-A parsing eval test applies each fixture through the real (or mocked) Ollama adapter and asserts outputs are within tolerance:
+A parsing eval test applies each fixture through the real (or mocked) OpenRouter adapter and asserts outputs are within tolerance:
 
 ```ts
 // apps/api/src/parsing/parsing-eval.test.ts
@@ -1439,7 +1439,7 @@ When adding or changing a feature, the developer is responsible for:
 - [ ] Integration test for any new Prisma repository method that involves a join, an upsert, or a transaction.
 - [ ] E2E test for any new endpoint: at least one happy path and one error path (wrong role, missing resource).
 - [ ] ConsentGuard coverage: if a new endpoint accesses candidate data on behalf of an employer/recruiter, it must be protected by `ConsentGuard` and have a corresponding guard test.
-- [ ] Golden-resume fixture: if the parsing pipeline is changed in Phase 2, re-run the eval suite and commit updated expected outputs if the change is intentional.
+- [ ] Golden-resume fixture: if the parsing pipeline is changed in Phase 2, re-run the eval suite (using `StubLlmAdapter` in CI; real OpenRouter in the nightly job) and commit updated expected outputs if the change is intentional.
 
 ---
 

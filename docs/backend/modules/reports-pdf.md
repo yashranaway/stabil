@@ -328,7 +328,7 @@ function deriveImprovement(result: AudienceScoreResult): ImprovementHint[] {
 }
 ```
 
-`PARAMETER_HINTS` lives in `packages/core`, not in the engine, so it can evolve without touching engine math. Phase 4 replaces static strings with a short Ollama-generated narrative (PII stays in-house per SCOPE §10).
+`PARAMETER_HINTS` lives in `packages/core`, not in the engine, so it can evolve without touching engine math. Phase 4 replaces static strings with a short LLM-generated narrative via the `LlmAdapter` (OpenRouter by default; swap to self-hosted if PII isolation is required — see [parsing.md](./parsing.md)).
 
 ---
 
@@ -781,7 +781,7 @@ Log only the `artifactId`, not the pre-signed URL (which contains a signature).
 
 ### Phase 2 (resume parsing)
 
-- `ScoreRun.breakdown` gains parameters populated by the Ollama + OCR parsing pipeline ([parsing.md](./parsing.md)). No change to this module's interface — it consumes whatever `ScoreRun.breakdown` contains.
+- `ScoreRun.breakdown` gains parameters populated by the OpenRouter + OCR parsing pipeline ([parsing.md](./parsing.md)). No change to this module's interface — it consumes whatever `ScoreRun.breakdown` contains.
 
 ### Phase 3 (verification & bonus)
 
@@ -791,7 +791,7 @@ Log only the `artifactId`, not the pre-signed URL (which contains a signature).
 ### Phase 4 (enhancements)
 
 - Multi-candidate comparison PDF template for employer/recruiter audience (Chart 7 — grouped Bar / Radar overlay; see [frontend/charts.md](../../frontend/charts.md#chart-7--phase-4-side-by-side-candidate-comparison)).
-- AI-generated improvement narrative: static `PARAMETER_HINTS` strings replaced by short Ollama-generated paragraphs per candidate, scoped to Phase 4. PII stays in-house (self-hosted Ollama, SCOPE §10).
+- AI-generated improvement narrative: static `PARAMETER_HINTS` strings replaced by short LLM-generated paragraphs per candidate via the `LlmAdapter` (OpenRouter by default; self-hosted Ollama if stricter PII isolation is required), scoped to Phase 4.
 
 ---
 

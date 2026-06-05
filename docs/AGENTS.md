@@ -55,7 +55,7 @@ flowchart TD
   subgraph Infra
     PG[("PostgreSQL + Prisma")]
     MINIO[("MinIO · S3-compatible")]
-    OLLAMA["Ollama (local LLM) + Tesseract OCR"]
+    OPENROUTER["OpenRouter (LLM gateway) + Tesseract OCR"]
   end
 
   WEB -->|REST JSON| API
@@ -67,7 +67,7 @@ flowchart TD
   CORE -->|fractions 0..1| SCORING
   API --> PG
   API --> MINIO
-  API -->|parse resumes/docs| OLLAMA
+  API -->|parse resumes/docs| OPENROUTER
 ```
 
 ### How a score is produced — end to end
@@ -83,7 +83,7 @@ sequenceDiagram
 
   U->>FE: Select mode (fresher/professional) + fill forms / upload docs
   FE->>API: POST /api/v1/profiles/:id/scores  (validated by Zod)
-  API->>API: (Phase 2) parse resume/docs via Ollama+OCR → enrich answers
+  API->>API: (Phase 2) parse resume/docs via OpenRouter LLM + OCR → enrich answers
   API->>CORE: normalize raw answers (GPA, years, certs…) → ParameterValues [0,1]
   CORE-->>API: { mode, values }  (CandidateInput)
   API->>ENG: computeScore(input, stabilConfig)
@@ -140,7 +140,7 @@ pnpm --filter @stabil/web dev                 # (once apps/web exists)
 turbo run build --filter=@stabil/api          # build one app + its deps
 ```
 
-The scoring package's own scripts (`packages/scoring/package.json`): `build` (`tsc`), `test` (`vitest run`), `test:watch`, `typecheck`. Infra (Postgres, MinIO, Ollama) is brought up via the dev setup in [CLOUD.md](CLOUD.md) and [phases/phase-0-foundations.md](phases/phase-0-foundations.md).
+The scoring package's own scripts (`packages/scoring/package.json`): `build` (`tsc`), `test` (`vitest run`), `test:watch`, `typecheck`. Infra (Postgres, MinIO) is brought up via the dev setup in [CLOUD.md](CLOUD.md) and [phases/phase-0-foundations.md](phases/phase-0-foundations.md). OpenRouter is an external service accessed via API key — no local container needed.
 
 ---
 

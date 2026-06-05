@@ -3,7 +3,9 @@
 > **Status:** Draft v0.1 · **Phase:** 2 · **Owner area:** backend + frontend
 > **Related:** [SCOPE.md](../SCOPE.md) · [phases/README.md](README.md) · [backend/modules/parsing.md](../backend/modules/parsing.md) · [backend/modules/documents-storage.md](../backend/modules/documents-storage.md) · [frontend/pages/documents-and-verification.md](../frontend/pages/documents-and-verification.md) · [frontend/pages/mode-selection-and-forms.md](../frontend/pages/mode-selection-and-forms.md) · [architecture/03-scoring-engine.md](../architecture/03-scoring-engine.md) · [architecture/05-security-privacy.md](../architecture/05-security-privacy.md)
 
-Phase 2 delivers automated resume and document parsing that auto-fills the scoring wizard and enriches parameter fractions with extracted evidence. Candidates upload a resume (PDF or image), the system detects whether it is text-selectable or scanned, applies Tesseract OCR when needed, sends the raw text to the local Ollama LLM for structured extraction validated against a Zod schema, maps extracted fields to normalized fractions via the `packages/core` rubric layer, and pre-fills the wizard. A **human-in-the-loop confirmation step** lets candidates review, correct, and approve before the score runs. All processing is in-house — PII never leaves the infrastructure (SCOPE §2 decision 20, §10).
+Phase 2 delivers automated resume and document parsing that auto-fills the scoring wizard and enriches parameter fractions with extracted evidence. Candidates upload a resume (PDF or image), the system detects whether it is text-selectable or scanned, applies Tesseract OCR when needed, sends the raw text to **OpenRouter** (a hosted, provider-agnostic LLM gateway) for structured extraction validated against a Zod schema, maps extracted fields to normalized fractions via the `packages/core` rubric layer, and pre-fills the wizard. A **human-in-the-loop confirmation step** lets candidates review, correct, and approve before the score runs.
+
+> **Privacy note:** resume text (which may contain PII) is sent to OpenRouter and processed by the configured third-party model. To mitigate this, use a model with a **no-training / zero-retention** data policy (e.g. models flagged as `data: {"training": false}` on OpenRouter). The adapter interface remains provider-agnostic — a self-hosted model can be substituted by swapping the adapter. Candidates should be informed via the upload privacy notice that their resume is processed by an external AI service.
 
 ---
 
@@ -15,8 +17,8 @@ Phase 2 delivers automated resume and document parsing that auto-fills the scori
 | 2 | Candidates can review and correct every extracted field before it feeds the scoring engine |
 | 3 | Extraction accuracy ≥ 85 % on the golden-fixture suite for tier-1 fields (experience, tenure, skills) |
 | 4 | Low-confidence extractions surface a targeted clarification prompt rather than silently defaulting |
-| 5 | The LLM adapter is pluggable — swapping Ollama for a managed provider changes only the adapter implementation, not the pipeline |
-| 6 | PII stays in-house; the Ollama process is local; no extracted text is sent to a third-party API |
+| 5 | The LLM adapter is pluggable — swapping OpenRouter for a self-hosted or different provider changes only the adapter implementation, not the pipeline |
+| 6 | OpenRouter is the default provider; resume text (PII) is sent externally — use a model with a no-training / zero-retention policy and disclose this to candidates |
 | 7 | Idempotent job processing — re-uploading the same file skips re-parse and returns the cached result |
 
 ---
@@ -26,7 +28,7 @@ Phase 2 delivers automated resume and document parsing that auto-fills the scori
 - PDF and image (JPG, PNG, WEBP) resume uploads
 - Text-PDF detection vs. scanned-image detection
 - Tesseract OCR for scanned documents
-- Provider-agnostic LLM adapter with Ollama as the default implementation
+- Provider-agnostic LLM adapter with OpenRouter as the default implementation
 - Structured extraction validated by a Zod schema
 - Confidence scoring per extracted field
 - Mapping extracted fields → normalized fractions `[0,1]` via `packages/core` rubric layer
@@ -47,7 +49,7 @@ Phase 2 delivers automated resume and document parsing that auto-fills the scori
 - In-platform skill tests (Phase 4)
 - AI-based communication assessment from written text (Phase 4)
 - Employer multi-candidate bulk parsing (Phase 4)
-- Third-party OCR or managed LLM APIs (these are a swap, not a Phase 2 task)
+- Swapping OpenRouter for a self-hosted model (supported via the adapter interface, not a Phase 2 task)
 
 ---
 
@@ -124,7 +126,7 @@ Deep spec: [frontend/pages/documents-and-verification.md](../frontend/pages/docu
 
 ## AI adapter interface
 
-The adapter contract lives in `packages/types/src/parsing/llm-adapter.ts` and is imported by `apps/api`. The concrete Ollama implementation (`OllamaAdapter`) lives in `apps/api/src/parsing/adapters/ollama.adapter.ts`. A future managed-LLM adapter (e.g. `OpenAiAdapter`) must satisfy the same interface — no pipeline code changes.
+The adapter contract lives in `packages/types/src/parsing/llm-adapter.ts` and is imported by `apps/api`. The default implementation (`OpenRouterAdapter`) lives in `apps/api/src/parsing/adapters/openrouter.adapter.ts`. Any alternative adapter (e.g. a self-hosted model) must satisfy the same interface — no pipeline code changes.
 
 ```typescript
 // packages/types/src/parsing/llm-adapter.ts
@@ -160,9 +162,11 @@ export interface LlmAdapter {
 }
 ```
 
-**Ollama adapter** connects to the local Ollama REST API at `http://localhost:11434` (or `OLLAMA_BASE_URL` env var). It uses the `/api/generate` endpoint with `format: "json"` and a system prompt that instructs the model to emit only valid JSON matching the extraction schema. Default model: `llama3.2:8b` (overridable via `OLLAMA_MODEL`).
+**OpenRouter adapter** connects to the OpenRouter REST API (default base URL: `https://openrouter.ai/api/v1`, overridable via `OPENROUTER_BASE_URL`). It calls the OpenAI-compatible `/chat/completions` endpoint with `response_format: { type: "json_object" }` and a system prompt that instructs the model to emit only valid JSON matching the extraction schema. Default model: `openai/gpt-4o-mini` (overridable via `OPENROUTER_MODEL`). Authentication uses `OPENROUTER_API_KEY`.
 
-**Swapping the provider:** set `LLM_ADAPTER=openai` (or whichever adapter name) in the API env, and inject a different `LlmAdapter` implementation via NestJS's DI token `LLM_ADAPTER`. No pipeline code changes required.
+> **Privacy:** choose a model with a no-training / zero-retention policy on OpenRouter. At startup the adapter logs a warning if `OPENROUTER_MODEL` is not explicitly set, prompting the operator to confirm their model choice.
+
+**Swapping the provider:** set `LLM_ADAPTER=stub` (or any registered adapter name) in the API env and inject a different `LlmAdapter` implementation via NestJS's DI token `LLM_ADAPTER`. The adapter interface is unchanged — swapping to a self-hosted model requires no pipeline code changes.
 
 ---
 
@@ -486,30 +490,36 @@ For each fixture, the harness compares extracted values to the expected JSON usi
 ### Running the eval
 
 ```bash
-# Against live local Ollama (requires Ollama running)
-OLLAMA_BASE_URL=http://localhost:11434 pnpm --filter @stabil/api eval:parse
+# Against live OpenRouter (requires OPENROUTER_API_KEY set)
+OPENROUTER_API_KEY=sk-or-... pnpm --filter @stabil/api eval:parse
 
-# In CI — use a deterministic stub adapter instead of real Ollama
+# In CI — use a deterministic stub adapter instead of real OpenRouter
 LLM_ADAPTER=stub pnpm --filter @stabil/api test
 ```
 
-The `StubLlmAdapter` returns fixture-keyed pre-recorded responses, enabling CI to validate the full pipeline (schema, confidence logic, rubric mapping) without a live LLM. Accuracy tests against real Ollama are run in a separate nightly job.
+The `StubLlmAdapter` returns fixture-keyed pre-recorded responses, enabling CI to validate the full pipeline (schema, confidence logic, rubric mapping) without a live LLM. Accuracy tests against real OpenRouter are run in a separate nightly job.
 
 ---
 
 ## PII safety
 
-All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 decision 20, §11).
+Resume text (which may contain personal information) is sent to **OpenRouter**, a third-party hosted LLM gateway. Mitigate this by:
+
+1. Choosing a model with a **no-training / zero-retention** data policy (confirm via the OpenRouter model card).
+2. Disclosing to candidates in the upload privacy notice that their resume is processed by an external AI service.
+3. Using the adapter interface to swap to a self-hosted model if stricter data residency is required.
+
+Raw files and extracted JSON remain in your own infrastructure. Tesseract OCR (scanned doc text extraction) runs fully in-process — no external calls.
 
 | Constraint | Implementation |
 |---|---|
-| Raw resume files stored only in MinIO (self-hosted) | Files never touch external object storage in Phase 2 |
-| Ollama runs locally | `OLLAMA_BASE_URL` must be a loopback or private network address; startup guard rejects public URLs |
+| Raw resume files stored only in MinIO (self-hosted) | Files never touch external object storage |
 | Extracted JSON stored in Postgres (self-hosted) | `extractedResume` column — encrypted at rest via Postgres + host-level encryption |
-| Adapter swap safeguard | If `LLM_ADAPTER != ollama`, API logs a `warn`-level PII notice and requires an explicit env var `ALLOW_EXTERNAL_LLM=true` to proceed |
+| OpenRouter model selection | Operator must set `OPENROUTER_MODEL` to a model with a no-training / zero-retention policy; adapter logs a startup warning if unset |
 | No logging of raw resume text | The pipeline logs job IDs and status transitions only; raw text is never written to logs |
 | Access control | Only the `parsing` NestJS module and the authenticated candidate (by `profileId`) may read a `ParseJob`; admin role may read for support |
 | Retention | `ParseJob` rows and MinIO objects follow the same retention policy as the profile: retained while the account is active, deleted on request (SCOPE §11) |
+| Adapter swap path | Swapping to a self-hosted model requires only changing `LLM_ADAPTER` and providing an adapter implementation; no pipeline code changes needed |
 
 ---
 
@@ -519,9 +529,9 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 
 #### B1 — Infrastructure additions
 
-- [ ] Add Redis sidecar to dev docker-compose (`redis:7-alpine`)
+- [ ] Redis is already in the Phase 0 docker-compose; confirm it is running (`redis:7-alpine`)
 - [ ] Add BullMQ to `apps/api` dependencies
-- [ ] Add `REDIS_URL`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `CONFIDENCE_THRESHOLD`, `LLM_ADAPTER`, `ALLOW_EXTERNAL_LLM` to env schema (`packages/types/src/env.ts`)
+- [ ] Add `REDIS_URL`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`, `CONFIDENCE_THRESHOLD`, `LLM_ADAPTER` to env schema (`packages/types/src/env.ts`)
 - [ ] Configure BullMQ `ParseJobQueue` in NestJS `ParsingModule`
 
 #### B2 — Documents storage (`documents-storage` module)
@@ -535,12 +545,14 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 #### B3 — LLM adapter layer
 
 - [ ] Define `LlmAdapter` interface in `packages/types/src/parsing/llm-adapter.ts`
-- [ ] Implement `OllamaAdapter` in `apps/api/src/parsing/adapters/ollama.adapter.ts`
-  - [ ] POST to `OLLAMA_BASE_URL/api/generate` with `format: "json"`
+- [ ] Implement `OpenRouterAdapter` in `apps/api/src/parsing/adapters/openrouter.adapter.ts`
+  - [ ] POST to `OPENROUTER_BASE_URL/chat/completions` with `response_format: { type: "json_object" }`
+  - [ ] Authenticate with `Authorization: Bearer OPENROUTER_API_KEY`
   - [ ] System prompt template `prompts/resume-extraction-v1.txt` (version-stamped)
   - [ ] 60 s request timeout; throw typed `LlmTimeoutError`
+  - [ ] Log a startup warning if `OPENROUTER_MODEL` is not explicitly set
 - [ ] Implement `StubLlmAdapter` for tests (returns fixture-keyed JSON)
-- [ ] NestJS DI token `LLM_ADAPTER`; factory selects implementation from env
+- [ ] NestJS DI token `LLM_ADAPTER`; factory selects implementation from env (default: `openrouter`)
 
 #### B4 — Parsing pipeline (orchestration)
 
@@ -570,7 +582,7 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 - [ ] Add 4 golden-resume fixtures (see §eval-harness)
 - [ ] Implement `eval.test.ts` with Vitest; fail CI if field accuracy < 85 % on tier-1 fields
 - [ ] `StubLlmAdapter` returns fixture-keyed JSON (deterministic CI)
-- [ ] Nightly CI job with real Ollama (`llama3.2:8b`)
+- [ ] Nightly CI job with real OpenRouter (`OPENROUTER_MODEL=openai/gpt-4o-mini` or configured model)
 
 ### FRONTEND
 
@@ -603,7 +615,7 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 
 | # | Deliverable | Location |
 |---|---|---|
-| 1 | `LlmAdapter` interface + `OllamaAdapter` + `StubLlmAdapter` | `apps/api/src/parsing/adapters/` |
+| 1 | `LlmAdapter` interface + `OpenRouterAdapter` + `StubLlmAdapter` | `apps/api/src/parsing/adapters/` |
 | 2 | `ExtractedResumeSchema` (Zod) + inferred types | `packages/types/src/parsing/extracted-resume.ts` |
 | 3 | Full async parsing pipeline (detection → OCR/text → LLM → validation → confidence → rubric) | `apps/api/src/parsing/` |
 | 4 | `ParseJob` Prisma model + migration | `apps/api/prisma/` |
@@ -620,7 +632,7 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 
 ### Functional
 
-- [ ] Uploading a text-PDF resume with a text layer produces a pre-filled wizard within 60 s (p95, local dev machine with Ollama running `llama3.2:8b`)
+- [ ] Uploading a text-PDF resume with a text layer produces a pre-filled wizard within 60 s (p95, with OpenRouter responding normally)
 - [ ] Uploading a scanned-image resume (JPEG, ≥ 300 DPI) produces a pre-filled wizard within 120 s (p95)
 - [ ] Re-uploading the same file byte-for-byte returns the cached result instantly (idempotency by SHA-256)
 - [ ] Each of the 4 golden fixtures achieves ≥ 85 % field accuracy on tier-1 fields in the eval harness
@@ -631,7 +643,7 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 
 ### PII / security
 
-- [ ] `OLLAMA_BASE_URL` must be non-public (guard on startup); setting a public URL without `ALLOW_EXTERNAL_LLM=true` throws a startup error
+- [ ] `OPENROUTER_MODEL` is validated at startup; a missing value produces a logged warning rather than a hard failure (operator may choose to proceed)
 - [ ] Raw resume text never appears in application logs (verified by log inspection in integration tests)
 - [ ] `ParseJob` rows are accessible only to the owning candidate and admin role (verified by auth integration tests)
 - [ ] File upload rejects non-PDF/image MIME types with `400 Bad Request` and rejects files > 10 MB
@@ -655,7 +667,7 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 | Unit — detection service | Vitest | Text-PDF heuristic (mock pdfjs response); scanned-image detection |
 | Integration — pipeline | Vitest + `StubLlmAdapter` | Full `ParseJobWorker` run from enqueue to DONE; state machine transitions; idempotency check |
 | Integration — endpoints | Supertest | Auth guards (401 for missing token, 403 for wrong owner); file-type rejection; size rejection; 202 on enqueue; correct status in poll response |
-| Eval — golden fixtures | Vitest (`eval.test.ts`) | Field accuracy ≥ 85 % on tier-1 fields with `StubLlmAdapter`; nightly with real Ollama |
+| Eval — golden fixtures | Vitest (`eval.test.ts`) | Field accuracy ≥ 85 % on tier-1 fields with `StubLlmAdapter`; nightly with real OpenRouter |
 | E2E — upload + confirm | Playwright | Upload a PDF fixture, wait for status DONE, advance to review step, accept auto-filled fields, submit, verify score run is triggered |
 | Security | Supertest | `ParseJob` row isolation by `profileId`; raw text not present in log output during integration run |
 
@@ -667,8 +679,8 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 |---|---|---|
 | **Phase 1 complete** | Hard | Profiles, scoring engine, and multi-step wizard exist and function end-to-end |
 | **MinIO running** | Hard (dev) | `documents-storage` module uses MinIO; dev docker-compose must include it |
-| **Ollama running locally** | Soft (dev) | Required for real extraction; `StubLlmAdapter` covers CI and unit tests |
-| **Redis** | Hard (Phase 2 addition) | BullMQ job queue; added to dev docker-compose in Phase 2 |
+| **OpenRouter API key** | Soft (dev) | Required for real extraction; `StubLlmAdapter` covers CI and unit tests without a key |
+| **Redis** | Hard | BullMQ job queue; included in the Phase 0 docker-compose |
 | `pdfjs-dist` | npm | Text-layer extraction from text PDFs |
 | `tesseract.js` | npm | OCR for scanned images; runs in Node worker threads |
 | `bullmq` | npm | Async job queue |
@@ -682,10 +694,10 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **Extraction accuracy below 85 % on tier-1 fields** (Ollama model struggles with dense or unusual resume formats) | Medium | High | Golden-fixture eval in CI catches regressions early; prompt engineering iteration; fall back to user manual entry for all fields (pre-fill is a courtesy, not a requirement for scoring) |
+| **Extraction accuracy below 85 % on tier-1 fields** (model struggles with dense or unusual resume formats) | Medium | High | Golden-fixture eval in CI catches regressions early; prompt engineering iteration; fall back to user manual entry for all fields (pre-fill is a courtesy, not a requirement for scoring) |
 | **OCR quality on low-DPI scans** (< 150 DPI photos of printed resumes) | Medium | Medium | Tesseract minimum DPI check; reject with user-facing guidance ("please upload a higher-quality scan"); add image pre-processing (deskew, binarize) as a fast-follow if needed |
 | **LLM hallucination** (model invents plausible-sounding fields) | Low–Medium | High | Zod schema validation is the first line of defence (out-of-schema fields are stripped); confidence scores flag uncertain outputs; human-in-the-loop confirmation step is mandatory — candidate must approve before score runs |
-| **LLM response not valid JSON** (model wraps output in prose) | Medium | Low | Ollama `format: "json"` mode strongly constrains output; up to 2 retries with a corrective prompt; if still invalid → `FAILED` state with user-facing error |
+| **LLM response not valid JSON** (model wraps output in prose) | Medium | Low | OpenRouter `response_format: { type: "json_object" }` strongly constrains output; up to 2 retries with a corrective prompt; if still invalid → `FAILED` state with user-facing error |
 | **Performance** — Tesseract OCR can take 30–90 s on a large scanned PDF | Medium | Medium | Run OCR in Node worker threads (not the event loop); BullMQ job timeout at 180 s; user sees a live status stepper, not a blank wait |
 | **Scope creep** — users expect parsing to cover verification documents (Aadhaar, PAN) | Low | Medium | Phase 2 parses **resumes only**; verification documents are Phase 3. Upload UI must clearly label the distinction |
 | **Rubric calibration** — `mapExtractedResumeToFractions` bands are placeholders | High (certainty) | Medium | Mark rubric constants as `/* TODO: calibrate in SCOPE §13 */`; the harness detects regressions if constants are changed; calibration is a Phase 1→2 handoff task |
@@ -697,9 +709,9 @@ All PII processing is in-house. These constraints are non-negotiable (SCOPE §2 
 | # | Milestone | Dependencies complete |
 |---|---|---|
 | M2-1 | `ExtractedResumeSchema` and `LlmAdapter` interface merged to `packages/types` | — |
-| M2-2 | `OllamaAdapter` + `StubLlmAdapter` implemented; manual smoke-test passing | M2-1 |
+| M2-2 | `OpenRouterAdapter` + `StubLlmAdapter` implemented; manual smoke-test passing | M2-1 |
 | M2-3 | Full async pipeline (detection → OCR/text → LLM → validation → confidence → mapping) running end-to-end on golden fixtures | M2-2, Redis in dev-compose |
 | M2-4 | REST endpoints implemented; integration tests green | M2-3 |
 | M2-5 | Upload UI with status polling deployed to staging | M2-4, Phase 1 web app |
 | M2-6 | "Review extracted data" wizard step implemented; E2E Playwright test green | M2-5 |
-| M2-7 | Eval harness ≥ 85 % accuracy; CI nightly Ollama job set up; Phase 2 closed | M2-6 |
+| M2-7 | Eval harness ≥ 85 % accuracy; CI nightly OpenRouter job set up; Phase 2 closed | M2-6 |

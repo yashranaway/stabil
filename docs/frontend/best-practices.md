@@ -379,7 +379,7 @@ export const tokenStore = {
 Next.js (React) escapes JSX interpolations by default. The risk areas in Stabil are:
 
 - **Rendered report text from the API** (improvement guidance, parameter labels) — these are data values, not HTML. Render them with JSX interpolation, never `dangerouslySetInnerHTML`.
-- **Resume/document parsing output (Phase 2)** — the Ollama parser may return extracted text from a user-uploaded resume. Never render raw parser output as HTML.
+- **Resume/document parsing output (Phase 2)** — the LLM parser may return extracted text from a user-uploaded resume. Never render raw parser output as HTML.
 - **User-supplied content** (profile bio, language list, etc.) — treat as plain text.
 
 ```tsx

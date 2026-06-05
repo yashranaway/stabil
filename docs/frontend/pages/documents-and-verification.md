@@ -14,7 +14,7 @@ This page covers two distinct but related document flows. First, **resume/docume
 
 | Flow | Purpose | Audience |
 |------|---------|----------|
-| **Resume / document upload** | Feed the AI parsing pipeline (Ollama + Tesseract OCR) so structured data (experience, education, skills, projects) can auto-fill wizard form fields and enrich scoring parameters. | Candidate (primary); employer-submitted candidate profile (via employer-driven onboarding — creates a claimable profile). |
+| **Resume / document upload** | Feed the AI parsing pipeline (OpenRouter LLM + Tesseract OCR) so structured data (experience, education, skills, projects) can auto-fill wizard form fields and enrich scoring parameters. | Candidate (primary); employer-submitted candidate profile (via employer-driven onboarding — creates a claimable profile). |
 | **Verification upload** | Prove identity and claims with government-issued ID. Approved documents earn **bonus points** (verification block, SCOPE §5) and flip the candidate's `Verified User` status, which is then displayed on the report. | Candidate (self-initiated); also surfaces as a nudge on the candidate report and the account settings page. |
 
 The **admin review queue** for pending verification submissions is a separate screen (`/admin/verification-queue`) not documented here; see [verification.md](../../backend/modules/verification.md) for its backend implementation.
@@ -40,7 +40,7 @@ All routes are **auth-guarded** (candidate role; employer-submitted claimable pr
 Phase 1 ──── Core scoring forms (no document upload yet)
 Phase 2 ──── Resume Upload (/onboarding/upload)
               │
-              └─► Parsing pipeline (Ollama + OCR)
+              └─► Parsing pipeline (OpenRouter LLM + OCR)
                     │
                     └─► "Review extracted data" confirmation step in wizard
                           (user corrects any mis-parses before fields are applied)
@@ -82,9 +82,9 @@ Resume upload is **Phase 2 only**. Verification upload is **Phase 3 only**. The 
 │  │                                                         │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
-│  🔒 Your documents are stored securely and processed            │
-│     in-house. We never send your data to third-party AI         │
-│     services.                                                   │
+│  🔒 Your documents are stored securely. Parsing uses             │
+│     OpenRouter (a hosted LLM gateway). Choose a model with      │
+│     a no-training / zero-retention policy.                      │
 │                                                                 │
 │                          [ Skip for now ]   [ Next → ]         │
 └─────────────────────────────────────────────────────────────────┘
@@ -167,7 +167,7 @@ Resume upload is **Phase 2 only**. Verification upload is **Phase 3 only**. The 
 | 1 | **Select file** | Drag-drop, file-picker, or camera capture (mobile). Client validates MIME type and file size before upload starts. |
 | 2 | **Presigned upload** | Client requests a presigned MinIO PUT URL from `POST /api/v1/documents/upload-url`. Uploads directly from the browser/app to MinIO without the API server acting as a proxy. |
 | 3 | **Confirm upload** | Client calls `POST /api/v1/documents/confirm` with the document ID. API sets `status = uploaded` and enqueues a parsing job. |
-| 4 | **Parsing** | Backend (Ollama + Tesseract) extracts structured fields asynchronously. Client polls `GET /api/v1/documents/:id/status` or receives a WebSocket/SSE event when parsing is complete (`status = parsed`). |
+| 4 | **Parsing** | Backend (OpenRouter LLM + Tesseract OCR) extracts structured fields asynchronously. Client polls `GET /api/v1/documents/:id/status` or receives a WebSocket/SSE event when parsing is complete (`status = parsed`). |
 | 5 | **Review extracted data** | Candidate sees a pre-filled diff view of parsed fields (see `mode-selection-and-forms.md` for the wizard review step). Candidate corrects any errors before fields are applied to their profile. |
 | 6 | **Apply to profile** | On confirmation, parsed + corrected values are merged into the candidate's profile and trigger a scoring run. |
 
@@ -477,7 +477,7 @@ Validation runs **client-side** before the presigned URL is requested, so the se
 Privacy messaging appears inline on both upload surfaces. It is not a modal or a blocker — it is a persistent static callout (`PrivacyReassurance` component) near the upload control.
 
 **Resume upload text:**
-> "Your resume is stored securely and processed in-house using our own AI. It is never sent to third-party services. You can delete it at any time from your account."
+> "Your resume is stored securely. Structured parsing is performed via OpenRouter, a hosted LLM gateway — we use models with no-training and zero-retention policies. You can delete your resume at any time from your account."
 
 **Verification upload text:**
 > "Your ID document is encrypted at rest and processed entirely within our infrastructure. It is never shared with employers or third parties without your explicit consent, and is permanently deleted when you close your account."

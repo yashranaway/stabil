@@ -26,7 +26,7 @@ This document covers every layer between the developer's laptop and a candidate 
 
 ### 1.1 Environment ladder
 
-Stabil runs four environments. Each is an isolated deployment of the full stack — web, API, database, object storage, and inference service.
+Stabil runs four environments. Each is an isolated deployment of the full stack — web, API, database, and object storage. AI parsing uses the external **OpenRouter** gateway (no local inference service).
 
 | Env | Purpose | API host | Web host | Database | Object store |
 |-----|---------|---------|---------|----------|--------------|
@@ -70,8 +70,9 @@ apps/
 | `MINIO_SECRET_KEY` | api | S3 secret access key | injected |
 | `MINIO_BUCKET_DOCUMENTS` | api | Documents bucket name | `stabil-documents` |
 | `MINIO_BUCKET_REPORTS` | api | Reports/PDF bucket name | `stabil-reports` |
-| `OLLAMA_BASE_URL` | api | Ollama inference endpoint | `http://localhost:11434` |
-| `OLLAMA_MODEL` | api | Default model tag | `llama3.2:3b` |
+| `OPENROUTER_API_KEY` | api | OpenRouter API key (injected secret) | injected |
+| `OPENROUTER_BASE_URL` | api | OpenRouter base URL | `https://openrouter.ai/api/v1` |
+| `OPENROUTER_MODEL` | api | Default LLM model identifier | `openai/gpt-4o-mini` |
 | `TESSERACT_DATA_PATH` | api | Tessdata directory | `/usr/share/tessdata` |
 | `QUEUE_DRIVER` | api | Job queue backend | `bull` |
 | `REDIS_URL` | api | Redis connection for Bull queue | `redis://localhost:6379` |
@@ -101,8 +102,8 @@ graph TB
     end
 
     subgraph AI / ML layer
-        Ollama["Ollama\n(self-hosted LLM)\nllama3.2:3b (default)"]
-        Tesseract["Tesseract OCR\n(sidecar / worker)"]
+        OpenRouter["OpenRouter\n(external LLM gateway)\nmodel via OPENROUTER_MODEL"]
+        Tesseract["Tesseract OCR\n(sidecar / worker — in-house)"]
     end
 
     subgraph Data layer
@@ -117,12 +118,11 @@ graph TB
     API --> MinIO
     API --> Queue
     Queue --> Workers
-    Workers --> Ollama
+    Workers -->|HTTPS API| OpenRouter
     Workers --> Tesseract
     Workers --> Postgres
     Workers --> MinIO
-    API -->|direct sync calls| Ollama
-    Ollama -.->|swappable via adapter| ManagedLLM["Managed LLM\n(future: OpenAI / Vertex / Bedrock)"]
+    OpenRouter -.->|swappable via adapter| SelfHosted["Self-hosted LLM\n(future: Ollama / vLLM)"]
     MinIO -.->|config-swap| S3["S3-compatible\n(future: Cloudflare R2 / AWS S3)"]
 ```
 
@@ -134,7 +134,7 @@ graph TB
 | Mobile → API | HTTPS | Same API; JWT in `Authorization: Bearer` header |
 | API → Postgres | TLS (ssl=require in Prisma URL) | Private VPC network on Railway/Fly; Neon uses TLS by default |
 | API → MinIO | HTTPS (prod) / HTTP (local) | Toggle `MINIO_USE_SSL` |
-| API → Ollama | HTTP (private network) | Never exposed publicly; same container network or VPC |
+| Workers → OpenRouter | HTTPS | External service; `OPENROUTER_API_KEY` injected at runtime; never logged |
 | API → Redis | TLS (prod) / TCP (local) | Redis AUTH required in all non-local envs |
 | Workers → external KYC APIs | HTTPS (Phase 3) | Egress-only; key rotated via secrets manager |
 
@@ -181,21 +181,13 @@ CMD ["node", "dist/main.js"]
 
 > **Tesseract:** bundled into the API image for Phase 2 OCR. The `tesseract-ocr-data-eng` and `tesseract-ocr-data-hin` packages cover English + Hindi; add more `tesseract-ocr-data-*` packages for additional languages.
 
-### 3.2 Dockerfile — Ollama sidecar (`infra/ollama/Dockerfile`)
+### 3.2 AI / LLM — OpenRouter (external, no container)
 
-For self-hosted deployments, run Ollama as a separate container. The image pre-pulls the default model at build time so first-request latency is zero.
+AI parsing is handled by **OpenRouter** — a hosted, provider-agnostic LLM gateway. There is no local Ollama container. Set `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, and `OPENROUTER_MODEL` in the environment (see §1.3). No Dockerfile or compose service is required for LLM inference.
 
-```dockerfile
-FROM ollama/ollama:latest
+To switch models, change `OPENROUTER_MODEL` (e.g. `anthropic/claude-haiku-4` or any model available on `https://openrouter.ai/models`). No code changes are required — the `LlmAdapter` reads from config.
 
-# Pre-pull the default model during image build.
-# Override OLLAMA_MODEL in the environment to switch models without rebuilding.
-ARG OLLAMA_MODEL=llama3.2:3b
-RUN ollama serve & sleep 5 && ollama pull ${OLLAMA_MODEL}
-
-EXPOSE 11434
-CMD ["ollama", "serve"]
-```
+> **Self-hosted fallback:** if stricter PII handling is ever required, swap `OpenRouterAdapter` for an `OllamaAdapter` in the NestJS DI binding and point `LLM_BASE_URL` at a local Ollama instance. No other code changes needed.
 
 ### 3.3 `docker-compose.yml` — full local stack
 
@@ -305,41 +297,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Ollama (local LLM inference) ───────────────────────────────────────────
-  # CPU-only by default. For GPU, add `deploy.resources.reservations.devices`
-  # (see §9 Scaling Notes).
-  ollama:
-    image: ollama/ollama:latest
-    container_name: stabil_ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # Pull the model on first start. Subsequent starts use the cached volume.
-    # Change OLLAMA_MODEL to swap the default LLM (see §10 for migration).
-    environment:
-      OLLAMA_MODEL: llama3.2:3b
-    entrypoint: >
-      /bin/sh -c "
-        ollama serve &
-        sleep 5 &&
-        ollama pull ${OLLAMA_MODEL:-llama3.2:3b} &&
-        wait
-      "
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+  # ── OpenRouter (external LLM gateway) ─────────────────────────────────────
+  # No local container needed. Set OPENROUTER_API_KEY, OPENROUTER_BASE_URL,
+  # and OPENROUTER_MODEL in apps/api/.env (see §1.3).
+  # The LlmAdapter makes HTTPS calls to https://openrouter.ai/api/v1 at runtime.
 
 volumes:
   postgres_data:
   postgres_shadow_data:
   minio_data:
   redis_data:
-  ollama_data:
 
 networks:
   default:
@@ -468,7 +435,9 @@ jobs:
           MINIO_SECRET_KEY: minioadmin
           MINIO_BUCKET_DOCUMENTS: stabil-documents
           MINIO_BUCKET_REPORTS: stabil-reports
-          OLLAMA_BASE_URL: http://localhost:11434
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
+          OPENROUTER_MODEL: openai/gpt-4o-mini
           NODE_ENV: test
         run: |
           pnpm --filter @stabil/api exec prisma migrate deploy
@@ -711,6 +680,7 @@ mc ilm rule add \
 | **JWT signing secret** | `JWT_SECRET` | ≥ 64 random bytes; one per environment; rotation requires coordinated API rollout |
 | **Object storage keys** | `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | Use service accounts with least-privilege bucket policies, not root credentials |
 | **Sentry DSN** | `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` | Public DSN for browser is not a secret but rate-limit via Sentry's ingest rules |
+| **LLM API key** | `OPENROUTER_API_KEY` | Store in Railway/platform secrets; never commit; rotate on suspected leak; restrict to parsing endpoints |
 | **API tokens (CI)** | `RAILWAY_TOKEN`, `TURBO_TOKEN` | Scoped tokens; revoke and rotate if the repository is compromised |
 | **Future KYC API keys** | Third-party verification API keys (Phase 3) | Store in Railway/platform secrets; never commit; audit access |
 
@@ -765,7 +735,7 @@ Self-hosted: expose Prometheus-compatible metrics from the NestJS API via `@will
 | `score_runs_total` | Counter | `mode`, `tier` | Business metric |
 | `queue_jobs_total` | Counter | `queue`, `status` | Bull queue throughput |
 | `queue_job_duration_seconds` | Histogram | `queue` | Worker latency |
-| `ollama_inference_duration_seconds` | Histogram | `model` | LLM inference latency |
+| `llm_inference_duration_seconds` | Histogram | `model`, `provider` | LLM inference latency (OpenRouter) |
 | `storage_upload_bytes_total` | Counter | `bucket` | Storage throughput |
 
 ### 7.3 Error tracking — Sentry
@@ -905,55 +875,37 @@ For a managed MinIO cluster, enable **MinIO replication** (`mc replicate add`) b
 1. **Postgres failure** → restore snapshot from Neon/Railway dashboard → update `DATABASE_URL` → redeploy API → run `prisma migrate status` → smoke test `/health/ready`.
 2. **MinIO total loss** → restore from `mc mirror` backup → re-provision buckets → update `MINIO_*` env vars → redeploy API.
 3. **API container failure** → platform auto-restarts (Railway restarts on exit); if persistent, roll back to previous image via Railway's deployment history.
-4. **Full environment loss** → provision new Railway project → set all env vars from the secrets store → restore Postgres from latest dump → restore MinIO from backup → deploy tagged release → run `prisma migrate deploy` → smoke test.
+4. **OpenRouter outage** → parsing jobs queue up in Bull (Redis-backed); resume automatically when OpenRouter recovers. For extended outages, set `LLM_PROVIDER=ollama` and provision an Ollama container as a temporary fallback.
+5. **Full environment loss** → provision new Railway project → set all env vars from the secrets store (including `OPENROUTER_API_KEY`) → restore Postgres from latest dump → restore MinIO from backup → deploy tagged release → run `prisma migrate deploy` → smoke test.
 
 ---
 
 ## 9. Scaling Notes
 
-### 9.1 Ollama CPU vs. GPU sizing
+### 9.1 OpenRouter model selection and cost
 
-Ollama runs inference on the default model (`llama3.2:3b`) in CPU-only mode for the POC. This is adequate for low-to-medium traffic (resume parsing is an async background job, not a real-time request path).
+AI parsing calls are made to **OpenRouter** over HTTPS — no local GPU or CPU sizing is required. The API container needs no additional memory for inference. Resume parsing is an async background job, so latency is not a real-time concern.
 
-| Mode | Hardware | Inference latency (llama3.2:3b) | Suitable for |
-|------|----------|--------------------------------|--------------|
-| CPU-only (4 cores) | 4 vCPU / 8 GB RAM | ~8–20 s per parse | POC, < 50 parses/day |
-| CPU-only (8 cores) | 8 vCPU / 16 GB RAM | ~4–10 s per parse | Early production, < 500 parses/day |
-| GPU (NVIDIA T4 / A10) | 1× GPU + 16 GB VRAM | ~0.5–2 s per parse | Scale-up, > 500 parses/day |
+**Model selection trade-offs (via `OPENROUTER_MODEL`):**
 
-**To enable GPU in docker-compose (NVIDIA):**
+| Model identifier | Quality | Approx cost/parse | Use case |
+|-----------------|---------|------------------|----------|
+| `openai/gpt-4o-mini` (default) | Good extraction | ~$0.0003 | POC / production |
+| `anthropic/claude-haiku-4` | High quality | ~$0.001 | Better accuracy / nuance |
+| `openai/gpt-4o` | Best quality | ~$0.003 | High-stakes review tasks |
+| `meta-llama/llama-3.1-8b-instruct` | Good (open model) | ~$0.0001 | Cost-optimised, no-training policy |
 
-```yaml
-# Add to the `ollama` service in docker-compose.yml
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: 1
-          capabilities: [gpu]
-```
+Switch models by changing `OPENROUTER_MODEL` env var — no code or infrastructure changes required. Use the [OpenRouter model explorer](https://openrouter.ai/models) to filter by provider data policies (prefer models with `no-training` / `zero-retention` guarantees).
 
-For Railway, select a GPU instance type in the service settings. For Fly.io, use `fly scale vm a10g`.
-
-**Model selection trade-offs:**
-
-| Model | Size | Quality | RAM needed | Use case |
-|-------|------|---------|-----------|----------|
-| `llama3.2:1b` | ~0.7 GB | Basic extraction | 2 GB | Ultra-low-cost CPU |
-| `llama3.2:3b` (default) | ~2 GB | Good extraction | 4 GB | POC / early prod |
-| `llama3.1:8b` | ~5 GB | High quality | 8 GB | Better accuracy |
-| `mistral-nemo:12b` | ~7 GB | Best open quality | 12 GB | GPU-required production |
-
-Switch models by changing `OLLAMA_MODEL` env var — no code changes required (the provider-agnostic adapter in `packages/core` reads from config).
+> **Self-hosted fallback:** if stricter PII handling is ever required (e.g. data-residency rules), swap `OpenRouterAdapter` for an `OllamaAdapter` in the DI binding and provision an Ollama container. The `LlmAdapter` interface is unchanged.
 
 ### 9.2 Async worker concurrency
 
 Bull queue concurrency is configured per processor in the NestJS worker service:
 
 ```typescript
-// Default: 2 concurrent parsing jobs (safe for CPU-only Ollama)
-@Processor({ name: 'parsing', concurrency: 2 })
+// Default: 5 concurrent parsing jobs (OpenRouter is I/O-bound; no local resource contention)
+@Processor({ name: 'parsing', concurrency: 5 })
 export class ParsingProcessor { ... }
 
 // PDF generation is CPU-light; allow more concurrency
@@ -965,7 +917,7 @@ export class PdfProcessor { ... }
 export class PurgeProcessor { ... }
 ```
 
-For Ollama CPU, set `concurrency: 1` on the `parsing` processor to avoid saturating the inference server and causing timeouts. With a GPU-backed Ollama, increase to `concurrency: 4–8` to match throughput.
+Because OpenRouter is a remote HTTPS service (I/O-bound), parsing concurrency is not constrained by local CPU/GPU resources. Tune `concurrency` based on OpenRouter rate limits for your plan (check `X-RateLimit-*` response headers).
 
 ### 9.3 API horizontal scaling
 
@@ -994,7 +946,7 @@ The entire stack runs at near-zero infrastructure cost in the POC and early prod
 | API (NestJS) | Railway Starter (500 h/mo free) | $0 |
 | Database | Neon Free (0.5 GB, 1 compute unit) | $0 |
 | Object storage | Self-hosted MinIO on Railway volume | ~$0 (included in compute) |
-| Ollama inference | Self-hosted on same Railway service | $0 (CPU-only) |
+| LLM inference | OpenRouter (`openai/gpt-4o-mini`) | ~$0–$1 (pay-per-token; ≈ $0.0003/parse) |
 | Redis (queue) | Railway free Redis | $0 |
 | Error tracking | Sentry Free (5k errors/mo) | $0 |
 | CI/CD | GitHub Actions (2 000 min/mo free) | $0 |
@@ -1013,9 +965,9 @@ flowchart LR
     end
 
     subgraph LLM
-        Ollama["Ollama\n(self-hosted)"] -->|OLLAMA_BASE_URL\n→ provider adapter| OAI["OpenAI API\ngpt-4o-mini"]
-        Ollama -->|adapter swap| Vertex["Google Vertex\ngemini-1.5-flash"]
-        Ollama -->|adapter swap| Bedrock["AWS Bedrock\nclaude-3-haiku"]
+        OR["OpenRouter\n(default)"] -->|OPENROUTER_MODEL| GPT4oMini["openai/gpt-4o-mini"]
+        OR -->|OPENROUTER_MODEL| Haiku["anthropic/claude-haiku-4"]
+        OR -->|adapter swap| Ollama["Self-hosted Ollama\n(stricter PII)"]
     end
 
     subgraph Database
@@ -1047,9 +999,9 @@ MINIO_SECRET_KEY=<r2-secret-access-key>
 
 Because the MinIO SDK implements the S3 wire protocol, it works against R2 and AWS S3 without modification.
 
-**LLM migration (Ollama → managed provider):**
+**LLM migration (OpenRouter ↔ self-hosted):**
 
-The `packages/core` AI adapter (`LlmAdapter` interface) has two implementations: `OllamaAdapter` (default) and a stub `ManagedLlmAdapter`. Switching is one env var change and a DI binding:
+The `packages/core` AI adapter (`LlmAdapter` interface) has two implementations: `OpenRouterAdapter` (default) and `OllamaAdapter` (self-hosted fallback). Switching is one env var change and a DI binding:
 
 ```typescript
 // packages/core/src/ai/llm.adapter.ts
@@ -1058,12 +1010,12 @@ export interface LlmAdapter {
 }
 
 // Registered in apps/api/src/app.module.ts
-const llmProvider = process.env.LLM_PROVIDER === 'openai'
-  ? OpenAiAdapter          // future: uses openai npm package
-  : OllamaAdapter;         // default: free, self-hosted
+const llmProvider = process.env.LLM_PROVIDER === 'ollama'
+  ? OllamaAdapter           // self-hosted fallback (stricter PII)
+  : OpenRouterAdapter;      // default: OpenRouter gateway
 ```
 
-Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=<key>` to route all inference to OpenAI without changing any scoring or parsing logic. The same pattern applies to Anthropic, Vertex, or Bedrock.
+The `OpenRouterAdapter` reads `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, and `OPENROUTER_MODEL` from env. Change `OPENROUTER_MODEL` to switch between any model on OpenRouter without touching code. Set `LLM_PROVIDER=ollama` to fall back to a local Ollama instance.
 
 **Managed Postgres migration:**
 
@@ -1073,10 +1025,10 @@ Prisma's `DATABASE_URL` is the single point of change. Neon, Supabase, RDS, and 
 
 | Traffic level | Additional costs (beyond free baseline) |
 |--------------|----------------------------------------|
-| 1 000 candidates/mo | +$0–$10 (Vercel Hobby, Neon Free sufficient) |
-| 10 000 candidates/mo | +$50–$150/mo (Neon Pro $19, Vercel Pro $20, Railway paid) |
-| 100 000 candidates/mo | +$300–$800/mo (add GPU for Ollama or switch to managed LLM) |
-| LLM switch to OpenAI (gpt-4o-mini) | ~$0.15/1M input tokens — parsing one resume ≈ 2 000 tokens ≈ $0.0003/parse |
+| 1 000 candidates/mo | +$0–$10 (Vercel Hobby, Neon Free sufficient; OpenRouter LLM ≈ $0.30) |
+| 10 000 candidates/mo | +$50–$155/mo (Neon Pro $19, Vercel Pro $20, Railway paid; OpenRouter ≈ $3) |
+| 100 000 candidates/mo | +$300–$800/mo (infra scale-up; OpenRouter ≈ $30; consider volume discounts) |
+| OpenRouter `openai/gpt-4o-mini` | ~$0.15/1M input tokens — parsing one resume ≈ 2 000 tokens ≈ $0.0003/parse |
 
 ---
 

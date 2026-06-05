@@ -6,7 +6,7 @@
 Phase 4 delivers three independent enhancement tracks that were deliberately **designed-for now** but **deferred until after the POC is proven** (SCOPE §9 — "Post-POC / later enhancements"). Each track adds substantial product value without altering the invariants of the core scoring engine established in Phases 1–3. The tracks are:
 
 1. **In-Platform Skill Tests** — scored assessments (e.g. the POC's "Python test 9/10") that feed a test sub-score into the existing engine via a new parameter placeholder.
-2. **Richer Communication Assessment** — AI-scored written and/or spoken samples (self-hosted models) that augment or replace the self-rating from Phase 1.
+2. **Richer Communication Assessment** — AI-scored written and/or spoken samples (via the provider-agnostic LLM adapter, default: OpenRouter) that augment or replace the self-rating from Phase 1.
 3. **Employer/Recruiter Multi-Candidate Comparison & Ranking Dashboard** — search, filter, sort, side-by-side compare, and shortlisting across consented candidates.
 
 All three tracks depend on Phases 1–3 being complete and deployed. They may be developed in parallel by separate sub-teams once Phases 0–3 are stable.
@@ -27,7 +27,7 @@ All three tracks depend on Phases 1–3 being complete and deployed. They may be
 
 ### In scope
 - Skill test delivery (timed MCQ/coding), question bank management, anti-cheat measures, per-test scoring, mapping test score → normalized fraction → engine input.
-- Communication sample submission (written text and/or audio upload), AI inference via self-hosted model (Ollama), rubric evaluation, fraction output.
+- Communication sample submission (written text and/or audio upload), AI inference via the LLM adapter (default: OpenRouter), rubric evaluation, fraction output.
 - Employer-side candidate search by score/tier/mode/location, filter/sort UI, side-by-side comparison panel, shortlist CRUD, consent-gated access enforcement.
 - Backend modules: `employer-search` (search, filter, compare, shortlist logic) and test-delivery service.
 - Frontend pages: employer/recruiter comparison dashboard, shortlist management view, test-taking flow (candidate-facing), communication sample submission UI.
@@ -37,7 +37,7 @@ All three tracks depend on Phases 1–3 being complete and deployed. They may be
 - Changing the fundamental three-block formula (`TOTAL = mode + common + verification`). The skill test is a **parameter inside the existing mode block**, not a new block.
 - Third-party proctoring integrations (e.g. camera-based invigilation) — deferred beyond Phase 4.
 - Commercially licensed question banks — all content in Phase 4 is internally authored or open-licensed.
-- Paying cloud inference APIs for communication assessment — the constraint is self-hosted Ollama / open models (SCOPE §2 decision 20).
+- Switching from OpenRouter to a specific commercial provider for communication assessment — the default adapter (OpenRouter) already provides access to many models; a self-hosted adapter can be substituted via the DI interface.
 - Native mobile test-taking (mobile-parity is a later concern; web-first for Phase 4 test delivery).
 
 ---
@@ -221,14 +221,14 @@ model TestAttempt {
 
 Phase 1 collects a self-reported communication rating (1–5 scale) and optional verifiable certificates as a proxy for communication ability (SCOPE §2 decision 10, §4.2, §4.5). Phase 4 replaces or augments this with AI-scored written and/or spoken samples, keeping the same `communication` parameter key and fraction interface. No engine changes are required — only the rubric mapping and data sources change.
 
-This track is constrained to **self-hosted models via Ollama** (SCOPE §2 decision 20 — PII stays in-house).
+This track uses the same **provider-agnostic LLM adapter** established in Phase 2 (default: OpenRouter). Communication sample text (which may contain personal information) is sent to OpenRouter; choose a model with a **no-training / zero-retention** policy. The adapter interface allows substituting a self-hosted model if stricter data residency is required.
 
 ### Signal sources
 
 | Sample type | Input | Self-hosted model | Output |
 |-------------|-------|-------------------|--------|
-| Written sample | Free-text response to a prompt (e.g. "Describe a challenge you overcame professionally") | Text generation / evaluation model (e.g. `llama3`, `mistral`) via Ollama | Rubric dimension scores → aggregate fraction |
-| Spoken sample | Audio upload (WAV/M4A/MP3, ≤ 2 min) | Whisper (speech-to-text, self-hosted) → transcript → same text evaluation model | Same rubric dimension scores |
+| Written sample | Free-text response to a prompt (e.g. "Describe a challenge you overcame professionally") | LLM adapter (default: OpenRouter, e.g. `openai/gpt-4o-mini`) | Rubric dimension scores → aggregate fraction |
+| Spoken sample | Audio upload (WAV/M4A/MP3, ≤ 2 min) | Whisper (speech-to-text, self-hosted via `whisper.cpp`) → transcript → same LLM adapter | Same rubric dimension scores |
 
 Both sample types produce the **same rubric output format**; the distinction is only in how the text was obtained.
 
@@ -270,7 +270,7 @@ export function communicationFraction(dims: CommunicationDimensions): number {
 
 ### Model prompt contract
 
-The Ollama inference call uses a **structured evaluation prompt** that:
+The LLM adapter (OpenRouter by default) call uses a **structured evaluation prompt** that:
 1. Provides the rubric dimensions and their 1–4 scale definitions.
 2. Provides the candidate's text (transcript or written sample) as the evaluated artifact.
 3. Instructs the model to return a **JSON object only**, with no prose before or after.
@@ -306,7 +306,7 @@ model CommunicationAssessment {
   prompt           String   // the evaluation prompt shown to the candidate
   rawText          String?  // written sample or Whisper transcript
   audioStorageKey  String?  // MinIO key for original audio file (spoken samples)
-  modelId          String   // e.g. "llama3:8b" — which Ollama model scored this
+  modelId          String   // e.g. "openai/gpt-4o-mini" — which model (via OpenRouter) scored this
   dimensionScores  Json?    // { clarity, coherence, vocabulary, grammar, relevance }
   fraction         Float?   // communicationFraction output
   status           String   // "pending" | "scored" | "failed"
@@ -339,9 +339,9 @@ Audio transcription and AI scoring are **async** (NestJS queue via BullMQ or sim
 - [ ] Unit-test rubric: min dims (all 1s) → 0.0, max dims (all 4s) → 1.0, mixed → expected composite
 
 #### Backend — `apps/api`
-- [ ] `CommunicationModule`: `WrittenAssessmentService`, `SpokenAssessmentService`, `OllamaEvaluationService`
-- [ ] `OllamaEvaluationService`: structured prompt builder, JSON response parser with strict validation, retry logic (up to 3 attempts with exponential backoff)
-- [ ] Whisper transcription service (self-hosted Whisper via Ollama or `whisper.cpp` sidecar): receives audio `storageKey`, returns transcript text
+- [ ] `CommunicationModule`: `WrittenAssessmentService`, `SpokenAssessmentService`, `LlmEvaluationService`
+- [ ] `LlmEvaluationService`: reuses the `LlmAdapter` interface from Phase 2 (default: `OpenRouterAdapter`); structured prompt builder, JSON response parser with strict validation, retry logic (up to 3 attempts with exponential backoff)
+- [ ] Whisper transcription service (self-hosted `whisper.cpp` sidecar): receives audio `storageKey`, returns transcript text
 - [ ] Async job queue for transcription + evaluation (BullMQ worker, Redis-backed)
 - [ ] Fallback logic: if `status = "failed"`, use Phase 1 self-rating fraction; log fallback event
 - [ ] Integrate AI-assessed fraction into score computation: supersedes self-rating when `status = "scored"`
@@ -560,10 +560,10 @@ Employer-only fields (Age, Marital Status) appear in the employer/recruiter comp
 
 ### Track 2 — Richer Communication Assessment
 - `packages/core/src/rubrics/communication.ts` with `communicationFraction`.
-- `CommunicationModule` in `apps/api` with Ollama evaluation service (written + spoken), Whisper transcription, async job queue, fallback logic.
+- `CommunicationModule` in `apps/api` with LLM evaluation service (written + spoken, via OpenRouter adapter), Whisper transcription, async job queue, fallback logic.
 - Prisma migration: `CommunicationAssessment`.
 - Candidate communication sample submission UI in `apps/web`.
-- Rubric unit tests + model prompt contract tests (mock Ollama).
+- Rubric unit tests + model prompt contract tests (mock LLM adapter / `StubLlmAdapter`).
 
 ### Track 3 — Employer/Recruiter Comparison Dashboard
 - `EmployerSearchModule` in `apps/api` with search, compare, shortlist, and CSV export services.
@@ -587,9 +587,9 @@ Employer-only fields (Age, Marital Status) appear in the employer/recruiter comp
 
 ### Track 2 acceptance criteria
 - [ ] A candidate can submit a written sample (100–800 word range enforced) and receive an AI-assessed fraction within 60 seconds under typical load.
-- [ ] A candidate can upload an audio file (≤ 10 MB, ≤ 2 min); it is transcribed by self-hosted Whisper and evaluated by the same rubric pipeline.
+- [ ] A candidate can upload an audio file (≤ 10 MB, ≤ 2 min); it is transcribed by the self-hosted `whisper.cpp` service and evaluated by the same LLM rubric pipeline.
 - [ ] Non-English text is detected and rejected with a user-facing error before being sent to the evaluation model.
-- [ ] If the Ollama model returns invalid JSON or out-of-range scores, `status` is set to `"failed"` and the Phase 1 self-rating fraction is used without any score regression.
+- [ ] If the LLM adapter (OpenRouter) returns invalid JSON or out-of-range scores, `status` is set to `"failed"` and the Phase 1 self-rating fraction is used without any score regression.
 - [ ] The candidate report breakdown labels the communication parameter "AI-assessed" when a scored assessment is present, and "self-reported" when falling back.
 - [ ] Audio files are stored in MinIO; the raw audio is not returned in any API response (only the transcript and assessment result are returned).
 - [ ] `communicationFraction` with all dimensions = 1 → 0.0; all dimensions = 4 → 1.0 (unit test passes).
@@ -618,8 +618,8 @@ Employer-only fields (Age, Marital Status) appear in the employer/recruiter comp
 
 ### Integration tests (supertest + test DB)
 - Full test attempt lifecycle: start → fetch questions (assert no `correctChoice` in response) → submit on time → fraction persisted → score recomputed.
-- Communication pipeline: submit written sample → mock Ollama returns valid JSON → fraction stored → score reflects new fraction.
-- Communication fallback: mock Ollama returns garbage → `status = "failed"` → score uses Phase 1 self-rating, no regression.
+- Communication pipeline: submit written sample → `StubLlmAdapter` returns valid JSON → fraction stored → score reflects new fraction.
+- Communication fallback: `StubLlmAdapter` returns garbage → `status = "failed"` → score uses Phase 1 self-rating, no regression.
 - Employer search: seed profiles with and without active consent grants; assert only consented profiles returned.
 - Shortlist entry consent withdrawal: revoke consent mid-test; assert shortlist entry returns placeholder.
 
@@ -636,11 +636,11 @@ Employer-only fields (Age, Marital Status) appear in the employer/recruiter comp
 |------------|--------|-------|
 | Phase 0 — Foundations | [phase-0-foundations.md](phase-0-foundations.md) | Monorepo, CI, shared packages, auth shell must be in place |
 | Phase 1 — Core scoring + report | [phase-1-core-scoring.md](phase-1-core-scoring.md) | `@stabil/scoring` engine, `packages/core` rubric layer, consent-sharing module, employer/recruiter accounts and report views |
-| Phase 2 — Parsing | [phase-2-parsing.md](phase-2-parsing.md) | Ollama adapter and provider-agnostic LLM infrastructure reused for Track 2 communication assessment |
+| Phase 2 — Parsing | [phase-2-parsing.md](phase-2-parsing.md) | OpenRouter adapter and provider-agnostic LLM infrastructure reused for Track 2 communication assessment |
 | Phase 3 — Verification | [phase-3-verification.md](phase-3-verification.md) | `ConsentGrant` table + consent-sharing module required for Track 3 search consent-join |
 | `packages/scoring` extensibility | [architecture/03-scoring-engine.md](../architecture/03-scoring-engine.md) | Engine must accept new parameter keys without formula change (data-driven config) |
-| Self-hosted Ollama | SCOPE §2 decision 20 | Ollama must be running and reachable from `apps/api`; Track 2 requires a suitable evaluation model loaded |
-| Whisper (Track 2) | Self-hosted (`whisper.cpp` or Ollama Whisper) | Required for spoken sample transcription |
+| OpenRouter API key | `OPENROUTER_API_KEY` env var | Track 2 evaluation calls the same `LlmAdapter` as Phase 2; ensure the model selected has a no-training / zero-retention policy |
+| Whisper (Track 2) | Self-hosted `whisper.cpp` sidecar | Required for spoken sample transcription; runs in-process, no external calls |
 | MinIO (Track 2) | Phase 0 / [CLOUD.md](../CLOUD.md) | Audio file storage |
 | BullMQ + Redis (Track 2) | New infra dependency | Async job queue for AI evaluation jobs |
 | PostgreSQL indexes (Track 3) | Phase 0 / [architecture/02-data-model.md](../architecture/02-data-model.md) | Performance indexes must be created before enabling employer search in production |
@@ -652,7 +652,7 @@ Employer-only fields (Age, Marital Status) appear in the employer/recruiter comp
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | **Skill test placeholder weight (max: 0) causes confusing "0 points" display** | High (guaranteed until calibrated) | Low | Suppress `skillTest` parameter row from all report views while `max = 0`; add a `hidden: true` flag to the parameter definition checked by the report renderer |
-| **Ollama evaluation model produces inconsistent scores** | Medium | High (score unfairness) | Implement inter-rater calibration against labeled ground-truth samples; if model consistency falls below threshold (e.g. Pearson r < 0.8 vs human raters), fall back to self-rating system-wide until model is improved |
+| **LLM evaluation model produces inconsistent scores** | Medium | High (score unfairness) | Implement inter-rater calibration against labeled ground-truth samples; if model consistency falls below threshold (e.g. Pearson r < 0.8 vs human raters), fall back to self-rating system-wide until model is improved |
 | **Whisper transcription accuracy varies by accent/audio quality** | Medium | Medium | Set minimum audio quality floor (SNR check via a lightweight utility); reject very low-quality recordings before transcription; communicate clearly that "clear audio in a quiet environment" is required |
 | **Communication AI assessment introduces bias** | Medium | High (legal/fairness) | Blind prompt (no demographic info); English-only scope with explicit language detection; periodic human-review sample of assessments; maintain audit log of all assessments |
 | **Consent enforcement gap in employer search** | Low | Critical | Consent join is in SQL, not a post-filter; reviewed in code review; integration test asserts revoked profiles never appear |
@@ -672,7 +672,7 @@ Employer-only fields (Age, Marital Status) appear in the employer/recruiter comp
 | **M4.1 — Rubric layer complete** | 1, 2 | `skillTestFraction` and `communicationFraction` implemented, unit-tested, and merged into `packages/core` |
 | **M4.2 — Test delivery backend** | 1 | `TestsModule` complete with delivery, scoring, and admin endpoints; integration tests passing |
 | **M4.3 — Test-taking UI** | 1 | Candidate can take a full timed MCQ test in-browser; result flows into score |
-| **M4.4 — Communication backend** | 2 | `CommunicationModule` complete; Ollama evaluation + Whisper transcription + fallback logic; integration tests passing |
+| **M4.4 — Communication backend** | 2 | `CommunicationModule` complete; LLM evaluation (via OpenRouter adapter) + Whisper transcription + fallback logic; integration tests passing |
 | **M4.5 — Communication UI** | 2 | Written and spoken sample submission flows in-browser; async result display |
 | **M4.6 — Employer search backend** | 3 | `EmployerSearchModule` complete; consent-join search, comparison, shortlist, CSV export; integration and consent-enforcement tests passing |
 | **M4.7 — Employer comparison UI** | 3 | Full employer/recruiter dashboard: search, filter, sort, compare panel, shortlist management; e2e tests passing |
