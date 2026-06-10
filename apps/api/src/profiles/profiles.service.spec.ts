@@ -49,7 +49,8 @@ describe("ProfilesService", () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     // Cast: the mock only implements the methods the service touches.
-    service = new ProfilesService(prisma as never);
+    const verification = { countApproved: async () => 0 };
+    service = new ProfilesService(prisma as never, verification as never);
   });
 
   describe("createProfile", () => {

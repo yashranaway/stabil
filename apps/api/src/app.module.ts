@@ -12,6 +12,7 @@ import { ProfilesModule } from "./profiles/profiles.module";
 import { ReportsModule } from "./reports/reports.module";
 import { ScoringModule } from "./scoring/scoring.module";
 import { UsersModule } from "./users/users.module";
+import { VerificationModule } from "./verification/verification.module";
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { UsersModule } from "./users/users.module";
     ReportsModule,
     ParsingModule,
     AccountModule,
+    VerificationModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

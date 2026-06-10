@@ -15,6 +15,7 @@ import type {
 } from "@stabil/types";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { VerificationService } from "../verification/verification.service";
 
 const CONFIG_VERSION = "stabil-v0.1";
 
@@ -23,7 +24,10 @@ type ScoreRunSummary = { total: number; tier: string } | null;
 
 @Injectable()
 export class ProfilesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly verification: VerificationService,
+  ) {}
 
   /** Candidate self-creates a profile they own (claimed immediately). */
   async createProfile(user: AuthUser, dto: CreateProfileDto) {
@@ -127,8 +131,13 @@ export class ProfilesService {
       data: { profileId: id, mode: answers.mode, answers },
     });
 
+    // Verified documents (admin-approved) override the self-reported count so that
+    // verification actually moves the score (Phase 3 bonus).
+    const approvedDocs = await this.verification.countApproved(id);
+    const effectiveAnswers = { ...answers, verifiedDocumentsCount: approvedDocs };
+
     const result = computeScore(
-      { mode: answers.mode, values: toFractions(answers) },
+      { mode: effectiveAnswers.mode, values: toFractions(effectiveAnswers) },
       stabilConfig,
     );
 

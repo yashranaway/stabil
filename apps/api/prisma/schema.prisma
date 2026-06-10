@@ -29,6 +29,12 @@ enum ShareStatus {
   EXPIRED
 }
 
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -79,6 +85,7 @@ model CandidateProfile {
   submissions FormSubmission[]
   scoreRuns   ScoreRun[]
   shares      ShareGrant[]
+  documents   Document[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -139,6 +146,25 @@ model ShareGrant {
   @@index([profileId])
   @@index([granteeEmail])
   @@map("share_grants")
+}
+
+// A document submitted for verification (Phase 3). File bytes go to object storage
+// later; this row tracks type/region and the review state machine.
+model Document {
+  id         String         @id @default(uuid())
+  profileId  String
+  profile    CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  kind       String // e.g. "aadhaar" | "pan" | "passport" | "national_id"
+  region     String // e.g. "IN" | "INTL"
+  status     DocumentStatus @default(PENDING)
+  storageKey String?
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime       @default(now())
+
+  @@index([profileId])
+  @@index([status])
+  @@map("documents")
 }
 
 model ReportArtifact {
