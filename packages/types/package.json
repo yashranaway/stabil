@@ -1,8 +1,8 @@
 {
-  "name": "@stabil/scoring",
+  "name": "@stabil/types",
   "version": "0.0.0",
   "private": true,
-  "description": "Deterministic, fixed-weight stability scoring engine",
+  "description": "Shared Zod schemas + TS types (the app contract)",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -15,11 +15,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@stabil/scoring": "workspace:*",
+    "zod": "^3.24.1"
+  },
   "devDependencies": {
-    "@types/node": "^20.17.0",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"
   }

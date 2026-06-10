@@ -29,12 +29,24 @@ importers:
       '@prisma/client':
         specifier: ^6.2.1
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      '@stabil/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@stabil/scoring':
+        specifier: workspace:*
+        version: link:../../packages/scoring
+      '@stabil/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@nestjs/cli':
         specifier: ^10.4.9
@@ -74,11 +86,43 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  packages/core:
+    dependencies:
+      '@stabil/scoring':
+        specifier: workspace:*
+        version: link:../scoring
+      '@stabil/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.41)(terser@5.48.0)
+
   packages/scoring:
     devDependencies:
       '@types/node':
         specifier: ^20.17.0
         version: 20.19.41
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.41)(terser@5.48.0)
+
+  packages/types:
+    dependencies:
+      '@stabil/scoring':
+        specifier: workspace:*
+        version: link:../scoring
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -2354,6 +2398,9 @@ packages:
     resolution: {integrity: sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==}
     engines: {node: '>=12'}
 
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
 snapshots:
 
   '@angular-devkit/core@17.3.11(chokidar@3.6.0)':
@@ -4568,3 +4615,5 @@ snapshots:
   xtend@4.0.2: {}
 
   yargs-parser@21.1.1: {}
+
+  zod@3.25.76: {}
