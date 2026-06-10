@@ -23,9 +23,11 @@ const DEFAULTS: ProfessionalAnswers = {
 export function ProfessionalForm({
   onSubmit,
   submitting,
+  prefill,
 }: {
   onSubmit: (answers: ProfessionalAnswers) => void;
   submitting: boolean;
+  prefill?: Partial<ProfessionalAnswers>;
 }) {
   const {
     register,
@@ -34,7 +36,7 @@ export function ProfessionalForm({
     formState: { errors },
   } = useForm<ProfessionalAnswers>({
     resolver: zodResolver(professionalAnswersSchema),
-    defaultValues: DEFAULTS,
+    defaultValues: { ...DEFAULTS, ...prefill },
   });
 
   const v = watch();

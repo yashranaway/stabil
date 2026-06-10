@@ -27,9 +27,11 @@ const DEFAULTS: FresherAnswers = {
 export function FresherForm({
   onSubmit,
   submitting,
+  prefill,
 }: {
   onSubmit: (answers: FresherAnswers) => void;
   submitting: boolean;
+  prefill?: Partial<FresherAnswers>;
 }) {
   const {
     register,
@@ -38,7 +40,7 @@ export function FresherForm({
     formState: { errors },
   } = useForm<FresherAnswers>({
     resolver: zodResolver(fresherAnswersSchema),
-    defaultValues: DEFAULTS,
+    defaultValues: { ...DEFAULTS, ...prefill },
   });
 
   const v = watch();

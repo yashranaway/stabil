@@ -22,6 +22,26 @@ export function ProfileScoreForm({
   error: string | null;
   onSubmit: (answers: RawAnswers) => void;
 }) {
+  const [resume, setResume] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<Partial<RawAnswers>>({});
+  const [formKey, setFormKey] = useState(0);
+
+  async function prefillFromResume() {
+    setParsing(true);
+    setParseError(null);
+    try {
+      const { suggestions } = await api.parseResume(resume);
+      setPrefill(suggestions as Partial<RawAnswers>);
+      setFormKey((k) => k + 1); // remount form so new defaults take effect
+    } catch (err) {
+      setParseError(err instanceof ApiError ? err.message : "Could not parse résumé.");
+    } finally {
+      setParsing(false);
+    }
+  }
+
   return (
     <div className="form-screen">
       <header className="report-header">
@@ -31,6 +51,34 @@ export function ProfileScoreForm({
         </div>
       </header>
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h2>Prefill from résumé (optional)</h2>
+        <textarea
+          rows={5}
+          value={resume}
+          onChange={(e) => setResume(e.target.value)}
+          placeholder="Paste résumé text to auto-fill some fields…"
+          style={{
+            width: "100%",
+            padding: 12,
+            background: "var(--bg)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            color: "var(--text)",
+            fontFamily: "inherit",
+          }}
+        />
+        {parseError && <p className="error-text">{parseError}</p>}
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => void prefillFromResume()}
+          disabled={parsing || resume.trim().length < 20}
+        >
+          {parsing ? "Parsing…" : "Prefill from résumé"}
+        </button>
+      </div>
+
       {error && (
         <div className="alert-error" role="alert">
           {error}
@@ -38,9 +86,19 @@ export function ProfileScoreForm({
       )}
 
       {mode === "fresher" ? (
-        <FresherForm submitting={submitting} onSubmit={(a: FresherAnswers) => onSubmit(a)} />
+        <FresherForm
+          key={formKey}
+          submitting={submitting}
+          prefill={prefill as Partial<FresherAnswers>}
+          onSubmit={(a: FresherAnswers) => onSubmit(a)}
+        />
       ) : (
-        <ProfessionalForm submitting={submitting} onSubmit={(a: ProfessionalAnswers) => onSubmit(a)} />
+        <ProfessionalForm
+          key={formKey}
+          submitting={submitting}
+          prefill={prefill as Partial<ProfessionalAnswers>}
+          onSubmit={(a: ProfessionalAnswers) => onSubmit(a)}
+        />
       )}
     </div>
   );
