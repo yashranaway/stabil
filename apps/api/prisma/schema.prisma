@@ -38,6 +38,7 @@ model User {
   passwordHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   ownedProfiles     CandidateProfile[] @relation("ProfileOwner")
   submittedProfiles CandidateProfile[] @relation("ProfileSubmitter")

@@ -34,6 +34,7 @@ interface UserRecord {
   name: string | null;
   role: AuthUser["role"];
   passwordHash: string | null;
+  deletedAt?: Date | null;
 }
 
 @Injectable()
@@ -71,8 +72,8 @@ export class AuthService {
       where: { email: dto.email },
     })) as UserRecord | null;
 
-    // Generic error for both unknown email and wrong password (no enumeration).
-    if (!record || !record.passwordHash) {
+    // Generic error for unknown email, wrong password, or deleted account (no enumeration).
+    if (!record || !record.passwordHash || record.deletedAt) {
       throw new UnauthorizedException("Invalid credentials.");
     }
 
@@ -116,7 +117,7 @@ export class AuthService {
     const record = (await this.prisma.user.findUnique({
       where: { id: stored.userId },
     })) as UserRecord | null;
-    if (!record) {
+    if (!record || record.deletedAt) {
       throw new UnauthorizedException("Invalid refresh token.");
     }
 
