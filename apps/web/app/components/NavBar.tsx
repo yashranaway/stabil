@@ -16,6 +16,7 @@ export function NavBar() {
         {loading ? null : user ? (
           <>
             <Link href="/dashboard">Dashboard</Link>
+            <Link href="/parse">Resume analyzer</Link>
             {(user.role === "EMPLOYER" || user.role === "RECRUITER") && (
               <Link href="/shared">Shared with me</Link>
             )}

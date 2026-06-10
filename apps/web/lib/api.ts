@@ -154,6 +154,13 @@ export const api = {
     request<AudienceScoreResult>(`/api/v1/profiles/${id}/score`, { method: "POST", body: { answers } }),
   listScoreRuns: (id: string) => request<ScoreRunSummary[]>(`/api/v1/profiles/${id}/score-runs`),
 
+  // parsing (Phase 2)
+  parseResume: (resumeText: string) =>
+    request<{ extracted: Record<string, unknown>; suggestions: Record<string, number> }>(
+      "/api/v1/parse/resume",
+      { method: "POST", body: { resumeText } },
+    ),
+
   // reports
   getReport: (profileId: string) => request<Report>(`/api/v1/profiles/${profileId}/report`),
 
