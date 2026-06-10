@@ -1,11 +1,15 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import type { AuthUser } from "@stabil/types";
 
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 @Injectable()
 export class VerificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /** Owner submits a document for verification (file bytes handled by storage later). */
   async submit(user: AuthUser, profileId: string, input: { kind: string; region: string }) {
@@ -26,9 +30,13 @@ export class VerificationService {
   }
 
   async review(admin: AuthUser, docId: string, approve: boolean) {
-    const doc = await this.prisma.document.findUnique({ where: { id: docId } });
+    const doc = await this.prisma.document.findUnique({
+      where: { id: docId },
+      include: { profile: { select: { ownerUserId: true } } },
+    });
     if (!doc) throw new NotFoundException("document not found");
-    return this.prisma.document.update({
+
+    const updated = await this.prisma.document.update({
       where: { id: docId },
       data: {
         status: approve ? "APPROVED" : "REJECTED",
@@ -36,6 +44,15 @@ export class VerificationService {
         reviewedAt: new Date(),
       },
     });
+
+    if (doc.profile.ownerUserId) {
+      await this.notifications.create(doc.profile.ownerUserId, "verification_result", {
+        documentId: docId,
+        kind: doc.kind,
+        status: updated.status,
+      });
+    }
+    return updated;
   }
 
   /** Count of approved documents — feeds the verification bonus at score time. */

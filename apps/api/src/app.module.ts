@@ -6,6 +6,7 @@ import { AccountModule } from "./account/account.module";
 import { AuthModule } from "./auth/auth.module";
 import { ConsentModule } from "./consent/consent.module";
 import { HealthController } from "./health/health.controller";
+import { NotificationsModule } from "./notifications/notifications.module";
 import { ParsingModule } from "./parsing/parsing.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProfilesModule } from "./profiles/profiles.module";
@@ -18,6 +19,7 @@ import { VerificationModule } from "./verification/verification.module";
   imports: [
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    NotificationsModule,
     AuthModule,
     UsersModule,
     ScoringModule,

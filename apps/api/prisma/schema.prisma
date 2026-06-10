@@ -50,6 +50,7 @@ model User {
   submittedProfiles CandidateProfile[] @relation("ProfileSubmitter")
   refreshTokens     RefreshToken[]
   sharesReceived    ShareGrant[]       @relation("ShareGrantee")
+  notifications     Notification[]
 
   @@map("users")
 }
@@ -146,6 +147,19 @@ model ShareGrant {
   @@index([profileId])
   @@index([granteeEmail])
   @@map("share_grants")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
 }
 
 // A document submitted for verification (Phase 3). File bytes go to object storage
