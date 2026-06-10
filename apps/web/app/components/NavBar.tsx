@@ -23,6 +23,7 @@ export function NavBar() {
                 <Link href="/compare">Compare</Link>
               </>
             )}
+            <Link href="/notifications">Notifications</Link>
             <Link href="/account">Account</Link>
             <button type="button" className="link-btn" onClick={() => void logout()}>
               Log out

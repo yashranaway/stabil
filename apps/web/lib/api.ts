@@ -132,6 +132,13 @@ export interface ShareGrant {
   expiresAt: string;
   createdAt: string;
 }
+export interface Notification {
+  id: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
+}
 
 export const api = {
   // auth
@@ -160,6 +167,11 @@ export const api = {
       "/api/v1/parse/resume",
       { method: "POST", body: { resumeText } },
     ),
+
+  // notifications
+  listNotifications: () => request<Notification[]>("/api/v1/notifications"),
+  markNotificationRead: (id: string) =>
+    request<void>(`/api/v1/notifications/${id}/read`, { method: "POST" }),
 
   // reports
   getReport: (profileId: string) => request<Report>(`/api/v1/profiles/${profileId}/report`),
