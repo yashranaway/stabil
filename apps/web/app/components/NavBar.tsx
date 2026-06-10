@@ -18,7 +18,10 @@ export function NavBar() {
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/parse">Resume analyzer</Link>
             {(user.role === "EMPLOYER" || user.role === "RECRUITER") && (
-              <Link href="/shared">Shared with me</Link>
+              <>
+                <Link href="/shared">Shared with me</Link>
+                <Link href="/compare">Compare</Link>
+              </>
             )}
             <Link href="/account">Account</Link>
             <button type="button" className="link-btn" onClick={() => void logout()}>
