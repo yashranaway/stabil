@@ -9,7 +9,8 @@ FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @stabil/api exec prisma generate
-RUN pnpm --filter @stabil/api build
+# Turbo builds the workspace libs (scoring/types/core) before the API.
+RUN pnpm turbo run build --filter=@stabil/api
 
 FROM base AS runtime
 ENV NODE_ENV=production

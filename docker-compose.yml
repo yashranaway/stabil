@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stabil}
       POSTGRES_DB: ${POSTGRES_DB:-stabil}
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "56379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -37,8 +37,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-stabil}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-stabilsecret}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "59000:9000"
+      - "59001:9001"
     volumes:
       - miniodata:/data
 
@@ -80,7 +80,7 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
     ports:
-      - "3001:3001"
+      - "3301:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,11 +97,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      # Server-side fetches use the in-network service name; the browser uses localhost.
+      # Server-side fetches use the in-network service name; the browser uses the mapped host port.
       API_URL: http://api:3001
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3301
     ports:
-      - "3000:3000"
+      - "3300:3000"
     depends_on:
       - api
 

@@ -8,7 +8,8 @@ WORKDIR /repo
 FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter @stabil/web build
+# Turbo builds the workspace libs (types/scoring) before the web app.
+RUN pnpm turbo run build --filter=@stabil/web
 
 FROM base AS runtime
 ENV NODE_ENV=production
