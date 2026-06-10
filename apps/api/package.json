@@ -20,6 +20,7 @@
     "@nestjs/core": "^10.4.15",
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.15",
+    "@nestjs/throttler": "^6.4.0",
     "@prisma/client": "^6.2.1",
     "@stabil/core": "workspace:*",
     "@stabil/scoring": "workspace:*",
