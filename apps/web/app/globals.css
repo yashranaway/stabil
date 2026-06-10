@@ -23,9 +23,9 @@ body {
 }
 
 main {
-  max-width: 760px;
+  max-width: 920px;
   margin: 0 auto;
-  padding: 64px 24px;
+  padding: 56px 24px;
 }
 
 h1 {

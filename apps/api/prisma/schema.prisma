@@ -1,5 +1,6 @@
-// Stabil API — Prisma schema (Phase 0 foundation).
-// Full data model lives in docs/architecture/02-data-model.md; this is the initial slice.
+// Stabil API — Prisma schema (Phase 1).
+// Mirrors docs/architecture/02-data-model.md. mode/tier/audience are stored as the
+// engine's lowercase string unions; status fields use Prisma enums.
 
 generator client {
   provider = "prisma-client-js"
@@ -17,13 +18,136 @@ enum Role {
   ADMIN
 }
 
+enum ProfileClaimStatus {
+  UNCLAIMED
+  CLAIMED
+}
+
+enum ShareStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String?
   role      Role     @default(CANDIDATE)
+  // Null until the auth module sets it (Phase 1). Nullable so seed/demo users work.
+  passwordHash String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  ownedProfiles     CandidateProfile[] @relation("ProfileOwner")
+  submittedProfiles CandidateProfile[] @relation("ProfileSubmitter")
+  refreshTokens     RefreshToken[]
+  sharesReceived    ShareGrant[]       @relation("ShareGrantee")
+
   @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  family    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model CandidateProfile {
+  id          String             @id @default(uuid())
+  displayName String
+  mode        String // "fresher" | "professional"
+  claimStatus ProfileClaimStatus @default(UNCLAIMED)
+  // Set when an employer/recruiter submits a candidate (claim invite target).
+  candidateEmail String?
+
+  ownerUserId String?
+  owner       User?   @relation("ProfileOwner", fields: [ownerUserId], references: [id])
+
+  submittedByUserId String?
+  submitter         User?   @relation("ProfileSubmitter", fields: [submittedByUserId], references: [id])
+
+  submissions FormSubmission[]
+  scoreRuns   ScoreRun[]
+  shares      ShareGrant[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([ownerUserId])
+  @@index([candidateEmail])
+  @@map("candidate_profiles")
+}
+
+model FormSubmission {
+  id        String   @id @default(uuid())
+  profileId String
+  profile   CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  mode      String
+  answers   Json
+  createdAt DateTime @default(now())
+
+  scoreRuns ScoreRun[]
+
+  @@index([profileId])
+  @@map("form_submissions")
+}
+
+// Immutable score snapshot — re-scoring creates a new row (history preserved).
+model ScoreRun {
+  id            String   @id @default(uuid())
+  profileId     String
+  profile       CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  submissionId  String?
+  submission    FormSubmission?  @relation(fields: [submissionId], references: [id])
+  total         Int
+  maxTotal      Int
+  tier          String
+  byBlock       Json
+  breakdown     Json // full breakdown incl. employer-only items; filtered on read
+  configVersion String
+  createdAt     DateTime @default(now())
+
+  reports ReportArtifact[]
+
+  @@index([profileId, createdAt])
+  @@map("score_runs")
+}
+
+model ShareGrant {
+  id            String      @id @default(uuid())
+  profileId     String
+  profile       CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  granteeEmail  String
+  granteeUserId String?
+  grantee       User?       @relation("ShareGrantee", fields: [granteeUserId], references: [id])
+  status        ShareStatus @default(ACTIVE)
+  expiresAt     DateTime
+  createdAt     DateTime    @default(now())
+  revokedAt     DateTime?
+
+  @@index([profileId])
+  @@index([granteeEmail])
+  @@map("share_grants")
+}
+
+model ReportArtifact {
+  id         String   @id @default(uuid())
+  scoreRunId String
+  scoreRun   ScoreRun @relation(fields: [scoreRunId], references: [id], onDelete: Cascade)
+  audience   String
+  storageKey String
+  createdAt  DateTime @default(now())
+
+  @@index([scoreRunId])
+  @@map("report_artifacts")
 }
