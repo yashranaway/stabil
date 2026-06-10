@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Profile, type Report as ReportData, type ScoreRunSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
+  ProfileDocuments,
   ProfileHistory,
   ProfileReport,
   ProfileScoreForm,
@@ -144,6 +145,7 @@ export default function ProfilePage() {
 
       <div className="grid" style={{ marginTop: 32 }}>
         <ProfileHistory runs={runs} />
+        <ProfileDocuments profileId={id} />
         <ProfileShare profileId={id} />
       </div>
     </main>

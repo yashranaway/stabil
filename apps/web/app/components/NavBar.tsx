@@ -23,6 +23,7 @@ export function NavBar() {
                 <Link href="/compare">Compare</Link>
               </>
             )}
+            {user.role === "ADMIN" && <Link href="/admin">Admin</Link>}
             <Link href="/notifications">Notifications</Link>
             <Link href="/account">Account</Link>
             <button type="button" className="link-btn" onClick={() => void logout()}>

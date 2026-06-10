@@ -198,3 +198,24 @@ a {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ---- print / save-as-PDF ---- */
+@media print {
+  .nav,
+  .no-print,
+  .link-btn,
+  button {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  main {
+    padding: 16px 0;
+  }
+  .card {
+    border-color: #ccc;
+    break-inside: avoid;
+  }
+}

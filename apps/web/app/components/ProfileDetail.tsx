@@ -1,8 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { api, ApiError, type Report as ReportData, type ScoreRunSummary } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type Report as ReportData,
+  type ScoreRunSummary,
+  type VerificationDoc,
+} from "@/lib/api";
 import { FresherForm } from "@/app/components/FresherForm";
 import { ProfessionalForm } from "@/app/components/ProfessionalForm";
 import { Report } from "@/app/components/Report";
@@ -108,6 +114,12 @@ export function ProfileScoreForm({
 export function ProfileReport({ report, onRescore }: { report: ReportData; onRescore: () => void }) {
   return (
     <>
+      <div className="row no-print" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+        <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
+          Save as PDF
+        </button>
+      </div>
+
       <Report result={report} onRestart={onRescore} />
 
       {report.suggestions.length > 0 && (
@@ -150,6 +162,81 @@ export function ProfileHistory({ runs }: { runs: ScoreRunSummary[] }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+export function ProfileDocuments({ profileId }: { profileId: string }) {
+  const [docs, setDocs] = useState<VerificationDoc[]>([]);
+  const [kind, setKind] = useState("aadhaar");
+  const [region, setRegion] = useState("IN");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setDocs(await api.listDocuments(profileId));
+    } catch {
+      /* ignore list errors */
+    }
+  }, [profileId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.submitDocument(profileId, { kind, region });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not submit document.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Verify documents</h2>
+      <p className="muted">Approved documents raise your score (the verification bonus).</p>
+      <div className="row">
+        <select value={region} onChange={(e) => setRegion(e.target.value)}>
+          <option value="IN">India</option>
+          <option value="INTL">International</option>
+        </select>
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          {region === "IN" ? (
+            <>
+              <option value="aadhaar">Aadhaar</option>
+              <option value="pan">PAN</option>
+            </>
+          ) : (
+            <>
+              <option value="passport">Passport</option>
+              <option value="national_id">National ID</option>
+            </>
+          )}
+        </select>
+        <button className="btn" onClick={() => void submit()} disabled={busy}>
+          {busy ? "Submitting…" : "Submit for verification"}
+        </button>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      {docs.length > 0 && (
+        <ul style={{ listStyle: "none", padding: 0, marginTop: 12 }}>
+          {docs.map((d) => (
+            <li key={d.id} className="row" style={{ justifyContent: "space-between", padding: "6px 0" }}>
+              <span>
+                {d.kind} · {d.region}
+              </span>
+              <span className="muted">{d.status}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

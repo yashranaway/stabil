@@ -139,6 +139,14 @@ export interface Notification {
   readAt: string | null;
   createdAt: string;
 }
+export interface VerificationDoc {
+  id: string;
+  profileId: string;
+  kind: string;
+  region: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  createdAt: string;
+}
 
 export const api = {
   // auth
@@ -167,6 +175,17 @@ export const api = {
       "/api/v1/parse/resume",
       { method: "POST", body: { resumeText } },
     ),
+
+  // verification (Phase 3)
+  submitDocument: (profileId: string, body: { kind: string; region: string }) =>
+    request<VerificationDoc>(`/api/v1/profiles/${profileId}/documents`, { method: "POST", body }),
+  listDocuments: (profileId: string) =>
+    request<VerificationDoc[]>(`/api/v1/profiles/${profileId}/documents`),
+  adminListPendingDocs: () => request<VerificationDoc[]>("/api/v1/admin/verifications"),
+  adminApproveDoc: (docId: string) =>
+    request<VerificationDoc>(`/api/v1/admin/verifications/${docId}/approve`, { method: "POST" }),
+  adminRejectDoc: (docId: string) =>
+    request<VerificationDoc>(`/api/v1/admin/verifications/${docId}/reject`, { method: "POST" }),
 
   // notifications
   listNotifications: () => request<Notification[]>("/api/v1/notifications"),
