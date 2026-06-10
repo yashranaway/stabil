@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AuthModule } from "./auth/auth.module";
 import { ConsentModule } from "./consent/consent.module";
 import { HealthController } from "./health/health.controller";
+import { ParsingModule } from "./parsing/parsing.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProfilesModule } from "./profiles/profiles.module";
 import { ReportsModule } from "./reports/reports.module";
@@ -21,6 +22,7 @@ import { UsersModule } from "./users/users.module";
     ProfilesModule,
     ConsentModule,
     ReportsModule,
+    ParsingModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
