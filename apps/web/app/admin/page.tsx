@@ -49,7 +49,7 @@ export default function AdminPage() {
       {!docs ? (
         <p className="muted">Loading…</p>
       ) : docs.length === 0 ? (
-        <p className="muted">Nothing pending. 🎉</p>
+        <p className="muted">Nothing pending.</p>
       ) : (
         <div className="grid">
           {docs.map((d) => (

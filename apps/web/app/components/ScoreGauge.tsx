@@ -10,9 +10,9 @@ import type { AudienceScoreResult } from "@stabil/scoring";
 
 import { tierColor, tierLabel } from "../../lib/tier";
 
-const TRACK = "#26304a";
-const FG = "#e6e9f2";
-const MUTED = "#9aa4bf";
+const TRACK = "#2e2a20";
+const FG = "#f4efe2";
+const MUTED = "#a39c89";
 
 function toGaugeData(result: AudienceScoreResult): ChartData<"doughnut"> {
   const filled = Math.max(0, Math.min(result.total, result.maxTotal));
@@ -54,19 +54,16 @@ function centerLabelPlugin(result: AudienceScoreResult): Plugin<"doughnut"> {
       ctx.textBaseline = "middle";
 
       ctx.fillStyle = FG;
-      ctx.font =
-        '700 36px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      ctx.font = '700 38px ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace';
       ctx.fillText(`${result.total}`, cx, cy);
 
       ctx.fillStyle = MUTED;
-      ctx.font =
-        '400 13px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-      ctx.fillText(`of ${result.maxTotal}`, cx, cy + 26);
+      ctx.font = '400 12px ui-monospace, "JetBrains Mono", monospace';
+      ctx.fillText(`OF ${result.maxTotal}`, cx, cy + 27);
 
       ctx.fillStyle = tierColor[result.tier];
-      ctx.font =
-        '600 14px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-      ctx.fillText(tierLabel[result.tier], cx, cy + 46);
+      ctx.font = '600 13px ui-monospace, "JetBrains Mono", monospace';
+      ctx.fillText(tierLabel[result.tier].toUpperCase(), cx, cy + 46);
       ctx.restore();
     },
   };

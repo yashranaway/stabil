@@ -22,7 +22,7 @@ function ModeSelection({ onPick }: { onPick: (mode: Mode) => void }) {
       <p className="sub">Your mode decides which questions appear and how you&apos;re scored.</p>
       <div className="mode-grid">
         <button type="button" className="mode-card" onClick={() => onPick("fresher")}>
-          <span className="mode-emoji">🎓</span>
+          <span className="mode-kicker">Mode 01</span>
           <span className="mode-title">Fresher</span>
           <span className="mode-desc">
             New graduate or up to ~1 year of experience. Scored on potential, academics
@@ -31,7 +31,7 @@ function ModeSelection({ onPick }: { onPick: (mode: Mode) => void }) {
           <span className="mode-cta">Select</span>
         </button>
         <button type="button" className="mode-card" onClick={() => onPick("professional")}>
-          <span className="mode-emoji">💼</span>
+          <span className="mode-kicker">Mode 02</span>
           <span className="mode-title">Working Professional</span>
           <span className="mode-desc">
             Currently employed or with meaningful work history. Scored on tenure,

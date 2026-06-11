@@ -11,11 +11,11 @@ export const tierLabel: Record<Tier, string> = {
 
 /** Tier → accent color (also drives the gauge arc). */
 export const tierColor: Record<Tier, string> = {
-  unstable: "#f87171",
-  developing: "#fb923c",
-  "somewhat-stable": "#facc15",
-  settled: "#38bdf8",
-  stable: "#34d399",
+  unstable: "#f0506e",
+  developing: "#ff8c42",
+  "somewhat-stable": "#ffce4f",
+  settled: "#4fd1c5",
+  stable: "#b8f34a",
 };
 
 /** One-line, encouraging blurb per tier. */
