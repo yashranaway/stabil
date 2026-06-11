@@ -112,11 +112,25 @@ export function ProfileScoreForm({
 
 /** Wraps the reused Report component and adds AI-generated suggestions from the report payload. */
 export function ProfileReport({ report, onRescore }: { report: ReportData; onRescore: () => void }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  async function downloadPdf() {
+    setPdfBusy(true);
+    try {
+      const { url } = await api.reportPdf(report.profile.id);
+      window.open(url, "_blank");
+    } catch {
+      window.print(); // fall back to browser print
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   return (
     <>
       <div className="row no-print" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
-        <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
-          Save as PDF
+        <button type="button" className="btn btn-secondary" onClick={() => void downloadPdf()} disabled={pdfBusy}>
+          {pdfBusy ? "Generating…" : "Download PDF"}
         </button>
       </div>
 

@@ -14,4 +14,9 @@ export class ReportsController {
   get(@CurrentUser() user: AuthUser, @Param("profileId") profileId: string) {
     return this.reports.getReport(user, profileId);
   }
+
+  @Get("pdf")
+  pdf(@CurrentUser() user: AuthUser, @Param("profileId") profileId: string) {
+    return this.reports.getReportPdf(user, profileId);
+  }
 }
