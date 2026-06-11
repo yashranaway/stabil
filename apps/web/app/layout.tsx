@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Instrument_Serif, JetBrains_Mono, Schibsted_Grotesk } from "next/font/google";
 
 import { NavBar } from "@/app/components/NavBar";
+import { SiteFooter } from "@/app/components/SiteFooter";
 import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <NavBar />
           {children}
+          <SiteFooter />
         </AuthProvider>
       </body>
     </html>

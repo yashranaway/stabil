@@ -656,3 +656,460 @@
     transition: none !important;
   }
 }
+
+/* ============================================================
+   Marketing pages (landing, pricing, about, security) — additive
+   ============================================================ */
+
+@layer components {
+  .kicker {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--signal);
+    margin: 0 0 14px;
+  }
+
+  /* ---- hero ---- */
+  .landing {
+    max-width: 1040px;
+  }
+  .hero {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 48px;
+    align-items: center;
+    padding: 28px 0 40px;
+  }
+  @media (max-width: 860px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+  }
+  .hero-title {
+    font-size: clamp(2.6rem, 5.4vw, 4rem);
+    margin-bottom: 16px;
+  }
+  .hero-title em {
+    font-style: italic;
+    color: var(--signal);
+  }
+  .hero-cta {
+    margin: 6px 0 14px;
+  }
+  .hero-note {
+    font-size: 0.85rem;
+  }
+
+  /* the sample-report card in the hero */
+  .specimen {
+    box-shadow: var(--shadow-md);
+    transform: rotate(0.6deg);
+  }
+  .specimen-score {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .specimen-total {
+    font-family: var(--font-mono), monospace;
+    font-weight: 700;
+    font-size: 3rem;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+  .specimen-of {
+    font-family: var(--font-mono), monospace;
+    color: var(--muted);
+  }
+  .specimen-tier {
+    margin: 10px 0 18px;
+    color: var(--tier-settled);
+    border-color: color-mix(in srgb, var(--tier-settled) 45%, transparent);
+  }
+  .specimen-tier .tier-badge-dot {
+    background: var(--tier-settled);
+  }
+  .specimen-foot {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin: 14px 0 0;
+  }
+
+  /* ---- ticker ---- */
+  .ticker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    justify-content: center;
+    padding: 14px 0;
+    margin: 8px 0 28px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    font-family: var(--font-mono), monospace;
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+  }
+
+  /* ---- sections ---- */
+  .section {
+    margin: 64px 0 0;
+  }
+  .section-title {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+    letter-spacing: -0.01em;
+    margin: 0 0 26px;
+  }
+
+  /* ---- steps ---- */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0;
+    border-top: 1px solid var(--line);
+  }
+  .step {
+    padding: 24px 22px 26px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  @media (min-width: 760px) {
+    .step + .step {
+      padding-left: 22px;
+      border-left: 1px solid var(--line);
+    }
+  }
+  .step-num {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    color: var(--signal);
+  }
+  .step h3 {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 400;
+    font-size: 1.4rem;
+    margin: 10px 0 8px;
+  }
+  .step p {
+    color: var(--muted);
+    margin: 0;
+    font-size: 0.95rem;
+  }
+
+  /* ---- tier scale band ---- */
+  .tier-scale {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  @media (max-width: 700px) {
+    .tier-scale {
+      grid-template-columns: 1fr;
+    }
+  }
+  .tier-cell {
+    padding: 18px 16px 16px;
+    border-top: 4px solid transparent;
+  }
+  .tier-cell + .tier-cell {
+    border-left: 1px solid var(--line);
+  }
+  @media (max-width: 700px) {
+    .tier-cell + .tier-cell {
+      border-left: none;
+      border-top-width: 4px;
+    }
+  }
+  .tier-cell.t1 { border-top-color: var(--tier-unstable); }
+  .tier-cell.t2 { border-top-color: var(--tier-developing); }
+  .tier-cell.t3 { border-top-color: var(--tier-somewhat); }
+  .tier-cell.t4 { border-top-color: var(--tier-settled); }
+  .tier-cell.t5 { border-top-color: var(--tier-stable); }
+  .tier-cell-name {
+    display: block;
+    font-weight: 600;
+    font-size: 0.92rem;
+  }
+  .tier-cell-range {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.74rem;
+    color: var(--muted);
+  }
+
+  /* ---- features ---- */
+  .feature-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .feature h3 {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 400;
+    font-size: 1.35rem;
+    margin: 8px 0 8px;
+  }
+  .feature p {
+    color: var(--muted);
+    margin: 0;
+    font-size: 0.95rem;
+  }
+  .feature-num {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    color: var(--signal);
+  }
+
+  /* ---- employer band ---- */
+  .employer-band {
+    padding: 40px;
+    background:
+      linear-gradient(115deg, transparent 55%, color-mix(in srgb, var(--signal) 7%, transparent)),
+      var(--surface);
+  }
+
+  /* ---- FAQ ---- */
+  .faq details {
+    border-bottom: 1px solid var(--line);
+    padding: 4px 0;
+  }
+  .faq summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 0;
+    font-weight: 600;
+    font-size: 1.02rem;
+  }
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq summary::after {
+    content: "+";
+    font-family: var(--font-mono), monospace;
+    color: var(--signal);
+    font-size: 1.1rem;
+    transition: transform 0.2s;
+  }
+  .faq details[open] summary::after {
+    transform: rotate(45deg);
+  }
+  .faq details p {
+    margin: 0 0 18px;
+    color: var(--muted);
+    max-width: 68ch;
+  }
+
+  /* ---- final CTA band ---- */
+  .cta-band {
+    margin: 72px 0 8px;
+    background: var(--ink);
+    color: var(--canvas);
+    border-radius: var(--radius-lg);
+    padding: 56px 32px;
+    text-align: center;
+  }
+  .cta-band h2 {
+    font-family: var(--font-display), Georgia, serif;
+    font-weight: 400;
+    color: var(--canvas);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    margin: 0 0 24px;
+  }
+  .cta-band h2 em {
+    color: #9fd3b8;
+  }
+  .btn-invert {
+    background: var(--canvas);
+    color: var(--ink);
+    border-color: var(--canvas);
+  }
+  .btn-invert:hover {
+    background: #9fd3b8;
+    border-color: #9fd3b8;
+    color: var(--ink);
+  }
+  .btn-invert-ghost {
+    border-color: color-mix(in srgb, var(--canvas) 40%, transparent);
+    color: var(--canvas);
+  }
+  .btn-invert-ghost:hover {
+    border-color: var(--canvas);
+    color: var(--canvas);
+  }
+
+  /* ---- pricing ---- */
+  .price-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+    align-items: start;
+  }
+  .price-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .price-card.featured {
+    border-color: var(--signal);
+    box-shadow: var(--shadow-md);
+  }
+  .price-flag {
+    position: absolute;
+    top: -11px;
+    left: 22px;
+    background: var(--signal);
+    color: var(--signal-ink);
+    font-family: var(--font-mono), monospace;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    padding: 3px 10px;
+    border-radius: 99px;
+  }
+  .price-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 2px 0 4px;
+  }
+  .price-amount {
+    font-family: var(--font-mono), monospace;
+    font-weight: 700;
+    font-size: 2.2rem;
+    letter-spacing: -0.03em;
+  }
+  .price-period {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  .price-blurb {
+    min-height: 44px;
+    margin: 0 0 8px;
+  }
+  .price-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 18px;
+  }
+  .price-features li {
+    padding: 7px 0 7px 22px;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.92rem;
+    position: relative;
+  }
+  .price-features li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--signal);
+  }
+
+  /* ---- ledger lines (about/security) ---- */
+  .ledger-line {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 16px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.95rem;
+  }
+  @media (max-width: 640px) {
+    .ledger-line {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+  }
+  .ledger-line:last-child {
+    border-bottom: none;
+  }
+  .ledger-line.total {
+    border-top: 2px solid var(--ink);
+  }
+  .ledger-key {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink);
+    padding-top: 3px;
+  }
+
+  /* ---- site footer ---- */
+  .site-footer {
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    margin-top: 48px;
+  }
+  .site-footer-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 48px 24px 32px;
+    display: grid;
+    grid-template-columns: 1.2fr 2fr;
+    gap: 40px;
+  }
+  @media (max-width: 760px) {
+    .site-footer-inner {
+      grid-template-columns: 1fr;
+    }
+  }
+  .site-footer-brand .brand {
+    font-size: 1.5rem;
+  }
+  .site-footer-brand p {
+    margin: 10px 0 0;
+    font-size: 0.9rem;
+  }
+  .site-footer-cols {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  @media (max-width: 560px) {
+    .site-footer-cols {
+      grid-template-columns: 1fr;
+    }
+  }
+  .site-footer-cols h3 {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  .site-footer-cols a {
+    display: block;
+    text-decoration: none;
+    color: var(--ink);
+    font-size: 0.92rem;
+    padding: 4px 0;
+  }
+  .site-footer-line {
+    border-top: 1px solid var(--line);
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 16px 24px 22px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-family: var(--font-mono), monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+}
