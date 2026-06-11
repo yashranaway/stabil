@@ -23,7 +23,7 @@ function makeService(audience: "candidate" | "employer") {
     scoreRun: { findFirst: vi.fn().mockResolvedValue(run) },
   };
   const consent = { hasAccess: vi.fn().mockResolvedValue({ allowed: true, audience }) };
-  return new ReportsService(prisma as never, consent as never, {} as never, {} as never);
+  return new ReportsService(prisma as never, consent as never);
 }
 
 describe("ReportsService.getReport", () => {
@@ -54,7 +54,7 @@ describe("ReportsService.getReport", () => {
   it("denies access when there is no consent", async () => {
     const prisma = { candidateProfile: { findFirst: vi.fn() }, scoreRun: { findFirst: vi.fn() } };
     const consent = { hasAccess: vi.fn().mockResolvedValue({ allowed: false, audience: "candidate" }) };
-    const svc = new ReportsService(prisma as never, consent as never, {} as never, {} as never);
+    const svc = new ReportsService(prisma as never, consent as never);
     await expect(
       svc.getReport({ id: "u3", email: "no@x.com", name: null, role: "EMPLOYER" }, "p1"),
     ).rejects.toThrow();

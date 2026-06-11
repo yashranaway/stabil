@@ -197,7 +197,6 @@ export const api = {
 
   // reports
   getReport: (profileId: string) => request<Report>(`/api/v1/profiles/${profileId}/report`),
-  reportPdf: (profileId: string) => request<{ url: string }>(`/api/v1/profiles/${profileId}/report/pdf`),
 
   // consent / shares
   createShare: (body: { profileId: string; granteeEmail: string; expiresInDays?: number }) =>

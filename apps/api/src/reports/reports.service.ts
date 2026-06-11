@@ -10,16 +10,12 @@ import type { AuthUser } from "@stabil/types";
 
 import { ConsentService } from "../consent/consent.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { StorageService } from "../storage/storage.service";
-import { PdfService } from "./pdf.service";
 
 @Injectable()
 export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly consent: ConsentService,
-    private readonly storage: StorageService,
-    private readonly pdf: PdfService,
   ) {}
 
   /** Audience-aware report for a profile's latest score run. Access is consent-gated. */
@@ -64,32 +60,6 @@ export class ReportsService {
       generatedAt: run.createdAt,
       suggestions: this.buildSuggestions(view.breakdown),
     };
-  }
-
-  /** Generate the audience-aware report PDF, store it, and return a download URL. */
-  async getReportPdf(user: AuthUser, profileId: string): Promise<{ url: string }> {
-    const report = await this.getReport(user, profileId);
-    const buffer = await this.pdf.render({
-      total: report.total,
-      maxTotal: report.maxTotal,
-      tier: report.tier,
-      breakdown: report.breakdown.map((b) => ({ label: b.label, awarded: b.awarded, max: b.max })),
-      profile: report.profile,
-    });
-
-    const run = await this.prisma.scoreRun.findFirst({
-      where: { profileId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-    const key = `${profileId}/${run?.id ?? "latest"}-${report.audience}.pdf`;
-    await this.storage.putObject(this.storage.reportsBucket, key, buffer, "application/pdf");
-    if (run) {
-      await this.prisma.reportArtifact.create({
-        data: { scoreRunId: run.id, audience: report.audience, storageKey: key },
-      });
-    }
-    return { url: await this.storage.presignedGet(this.storage.reportsBucket, key) };
   }
 
   /** Simple improvement hints from the audience-visible breakdown. */
