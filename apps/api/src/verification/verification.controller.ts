@@ -38,6 +38,13 @@ export class VerificationController {
     return this.verification.listPending();
   }
 
+  @Get("admin/verifications/:docId/url")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN")
+  downloadUrl(@Param("docId") docId: string) {
+    return this.verification.downloadUrl(docId);
+  }
+
   @Post("admin/verifications/:docId/approve")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("ADMIN")

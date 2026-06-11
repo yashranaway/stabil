@@ -15,7 +15,7 @@ const MODE_LABEL: Record<Profile["mode"], string> = {
 };
 
 export function DashboardProfileCard({ profile }: { profile: Profile }) {
-  const score = profile.latestScore;
+  const score = profile.latestScoreRun;
   return (
     <Link href={`/profiles/${profile.id}`} className="card" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
       <h2>{MODE_LABEL[profile.mode]}</h2>

@@ -3,20 +3,29 @@ import type { AuthUser } from "@stabil/types";
 
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
 
 @Injectable()
 export class VerificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly storage: StorageService,
   ) {}
 
-  /** Owner submits a document for verification (file bytes handled by storage later). */
+  /** Owner submits a document: creates the record and returns a presigned upload URL. */
   async submit(user: AuthUser, profileId: string, input: { kind: string; region: string }) {
     await this.assertOwner(user, profileId);
-    return this.prisma.document.create({
+    const created = await this.prisma.document.create({
       data: { profileId, kind: input.kind, region: input.region },
     });
+    const storageKey = `${profileId}/${created.id}`;
+    const document = await this.prisma.document.update({
+      where: { id: created.id },
+      data: { storageKey },
+    });
+    const uploadUrl = await this.storage.presignedPut(this.storage.documentsBucket, storageKey);
+    return { document, uploadUrl };
   }
 
   async listForProfile(user: AuthUser, profileId: string) {
@@ -27,6 +36,14 @@ export class VerificationService {
   /** Admin review queue. */
   listPending() {
     return this.prisma.document.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" } });
+  }
+
+  /** Admin: short-lived URL to view the uploaded document bytes. */
+  async downloadUrl(docId: string): Promise<{ url: string | null }> {
+    const doc = await this.prisma.document.findUnique({ where: { id: docId } });
+    if (!doc) throw new NotFoundException("document not found");
+    if (!doc.storageKey) return { url: null };
+    return { url: await this.storage.presignedGet(this.storage.documentsBucket, doc.storageKey) };
   }
 
   async review(admin: AuthUser, docId: string, approve: boolean) {

@@ -170,6 +170,7 @@ export function ProfileDocuments({ profileId }: { profileId: string }) {
   const [docs, setDocs] = useState<VerificationDoc[]>([]);
   const [kind, setKind] = useState("aadhaar");
   const [region, setRegion] = useState("IN");
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -189,10 +190,19 @@ export function ProfileDocuments({ profileId }: { profileId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await api.submitDocument(profileId, { kind, region });
+      const { uploadUrl } = await api.submitDocument(profileId, { kind, region });
+      if (file) {
+        const put = await fetch(uploadUrl, {
+          method: "PUT",
+          body: file,
+          headers: { "content-type": file.type || "application/octet-stream" },
+        });
+        if (!put.ok) throw new Error(`Upload failed (HTTP ${put.status}).`);
+      }
+      setFile(null);
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not submit document.");
+      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Could not submit document.");
     } finally {
       setBusy(false);
     }
@@ -220,6 +230,12 @@ export function ProfileDocuments({ profileId }: { profileId: string }) {
             </>
           )}
         </select>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          style={{ width: "auto" }}
+        />
         <button className="btn" onClick={() => void submit()} disabled={busy}>
           {busy ? "Submitting…" : "Submit for verification"}
         </button>

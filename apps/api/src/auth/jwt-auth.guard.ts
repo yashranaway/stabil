@@ -11,6 +11,7 @@ interface AccessClaims {
   sub: string;
   email: string;
   role: Role;
+  name?: string | null;
 }
 
 /**
@@ -49,7 +50,7 @@ export class JwtAuthGuard implements CanActivate {
       id: claims.sub,
       email: claims.email,
       role: claims.role,
-      name: null,
+      name: claims.name ?? null,
     };
     return true;
   }

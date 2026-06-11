@@ -140,6 +140,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      name: user.name,
     });
 
     const refreshToken = randomBytes(32).toString("hex");

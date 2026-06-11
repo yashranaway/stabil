@@ -111,7 +111,7 @@ export interface Profile {
   claimStatus: "UNCLAIMED" | "CLAIMED";
   ownerUserId: string | null;
   createdAt: string;
-  latestScore?: { total: number; tier: string } | null;
+  latestScoreRun?: { total: number; tier: string } | null;
 }
 export interface ScoreRunSummary {
   id: string;
@@ -178,7 +178,10 @@ export const api = {
 
   // verification (Phase 3)
   submitDocument: (profileId: string, body: { kind: string; region: string }) =>
-    request<VerificationDoc>(`/api/v1/profiles/${profileId}/documents`, { method: "POST", body }),
+    request<{ document: VerificationDoc; uploadUrl: string }>(
+      `/api/v1/profiles/${profileId}/documents`,
+      { method: "POST", body },
+    ),
   listDocuments: (profileId: string) =>
     request<VerificationDoc[]>(`/api/v1/profiles/${profileId}/documents`),
   adminListPendingDocs: () => request<VerificationDoc[]>("/api/v1/admin/verifications"),

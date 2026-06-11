@@ -13,7 +13,8 @@ describe("VerificationService", () => {
       },
     };
     const notifications = { create: vi.fn() };
-    const svc = new VerificationService(prisma as never, notifications as never);
+    const storage = { documentsBucket: "docs", presignedPut: vi.fn(), presignedGet: vi.fn() };
+    const svc = new VerificationService(prisma as never, notifications as never, storage as never);
     const out = await svc.review(admin, "d1", true);
     expect(out.status).toBe("APPROVED");
     expect(out.reviewedBy).toBe("admin1");
@@ -23,7 +24,11 @@ describe("VerificationService", () => {
 
   it("countApproved counts only APPROVED documents", async () => {
     const count = vi.fn().mockResolvedValue(2);
-    const svc = new VerificationService({ document: { count } } as never, { create: vi.fn() } as never);
+    const svc = new VerificationService(
+      { document: { count } } as never,
+      { create: vi.fn() } as never,
+      { documentsBucket: "docs", presignedPut: vi.fn(), presignedGet: vi.fn() } as never,
+    );
     const n = await svc.countApproved("p1");
     expect(n).toBe(2);
     expect(count).toHaveBeenCalledWith({ where: { profileId: "p1", status: "APPROVED" } });
