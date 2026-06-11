@@ -10,9 +10,9 @@ import type { AudienceScoreResult } from "@stabil/scoring";
 
 import { tierColor, tierLabel } from "../../lib/tier";
 
-const TRACK = "#2e2a20";
-const FG = "#f4efe2";
-const MUTED = "#a39c89";
+const TRACK = "#ece9e0";
+const FG = "#16150f";
+const MUTED = "#757164";
 
 function toGaugeData(result: AudienceScoreResult): ChartData<"doughnut"> {
   const filled = Math.max(0, Math.min(result.total, result.maxTotal));

@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Instrument_Serif, JetBrains_Mono, Schibsted_Grotesk } from "next/font/google";
 
 import { NavBar } from "@/app/components/NavBar";
 import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
-const display = Bricolage_Grotesque({
+const display = Instrument_Serif({
+  weight: "400",
+  style: ["normal", "italic"],
   subsets: ["latin"],
   variable: "--font-display",
   display: "swap",
 });
-const sans = Hanken_Grotesk({
+const sans = Schibsted_Grotesk({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
@@ -30,7 +32,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body>
-        <div className="grain" aria-hidden />
         <AuthProvider>
           <NavBar />
           {children}
