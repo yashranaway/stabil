@@ -18,5 +18,6 @@ WORKDIR /repo
 COPY --from=build /repo /repo
 WORKDIR /repo/apps/api
 EXPOSE 3001
-# Apply pending migrations, then start the server.
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/main.js"]
+# Apply pending migrations, then start the server. Invoke the prisma bin
+# directly — `pnpm exec` would trigger a Corepack pnpm download at runtime.
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]

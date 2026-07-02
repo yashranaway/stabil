@@ -21,4 +21,6 @@ WORKDIR /repo
 COPY --from=build /repo /repo
 WORKDIR /repo/apps/api
 # Apply pending migrations (Neon), then start the HTTP server on $PORT.
-CMD ["sh", "-c", "pnpm exec prisma migrate deploy && node dist/main.js"]
+# Invoke the prisma bin directly — `pnpm exec` would make Corepack download
+# pnpm at runtime, which blows the function cold-start budget.
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/main.js"]

@@ -24,7 +24,11 @@ The whole stack on free tiers, using Vercel's container-function support
 
 ## 1. API project (container function)
 Vercel → **Add New → Project** → import `yashranaway/stabil`:
-- **Root Directory:** repository root (leave as `.`) — Vercel auto-detects `Dockerfile.vercel`.
+- **Root Directory:** repository root (leave as `.`) — the repo's `vercel.json` declares
+  the container via `services` (`entrypoint: Dockerfile.vercel`); plain auto-detection
+  is unreliable when a root `package.json` build script exists.
+- Note: the container `CMD` must not invoke `pnpm` (Corepack would download pnpm at
+  runtime and blow the cold-start budget) — it calls `node_modules/.bin/prisma` directly.
 - **Environment variables:**
 
 | Key | Value |

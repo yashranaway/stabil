@@ -42,3 +42,5 @@ test-results/
 
 # Misc
 *.local
+.vercel
+.env*
