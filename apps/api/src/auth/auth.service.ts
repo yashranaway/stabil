@@ -14,6 +14,7 @@ import type {
   TokenPair,
 } from "@stabil/types";
 import * as argon2 from "argon2";
+import { OAuth2Client } from "google-auth-library";
 
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -39,6 +40,10 @@ interface UserRecord {
 
 @Injectable()
 export class AuthService {
+  private readonly googleClient = process.env.GOOGLE_CLIENT_ID
+    ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+    : null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -79,6 +84,48 @@ export class AuthService {
 
     const valid = await argon2.verify(record.passwordHash, dto.password);
     if (!valid) {
+      throw new UnauthorizedException("Invalid credentials.");
+    }
+
+    const user = this.toAuthUser(record);
+    const tokens = await this.issueTokens(user, randomUUID());
+    return { user, tokens };
+  }
+
+  /**
+   * Verify a Google ID token (from Google Identity Services on the frontend),
+   * then find-or-create the user by email and issue our own token pair.
+   * Google-provisioned accounts have no passwordHash, so password login stays
+   * blocked for them (they always sign in via Google).
+   */
+  async loginWithGoogle(idToken: string): Promise<{ user: AuthUser; tokens: TokenPair }> {
+    if (!this.googleClient) {
+      throw new UnauthorizedException("Google sign-in is not configured.");
+    }
+
+    let email: string | undefined;
+    let name: string | null = null;
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      if (!payload?.email || !payload.email_verified) {
+        throw new Error("unverified email");
+      }
+      email = payload.email;
+      name = payload.name ?? null;
+    } catch {
+      throw new UnauthorizedException("Invalid Google credential.");
+    }
+
+    let record = (await this.prisma.user.findUnique({ where: { email } })) as UserRecord | null;
+    if (!record) {
+      record = (await this.prisma.user.create({
+        data: { email, name, role: "CANDIDATE" },
+      })) as UserRecord;
+    } else if (record.deletedAt) {
       throw new UnauthorizedException("Invalid credentials.");
     }
 

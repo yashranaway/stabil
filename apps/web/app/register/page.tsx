@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { GoogleSignInButton } from "@/app/components/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -25,6 +26,7 @@ export default function RegisterPage() {
   const [role, setRole] = useState<Role>("CANDIDATE");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -105,6 +107,13 @@ export default function RegisterPage() {
             {submitting ? "Creating…" : "Create account"}
           </button>
         </form>
+
+        {googleError && (
+          <p className="error-text" role="alert">
+            {googleError}
+          </p>
+        )}
+        <GoogleSignInButton onError={setGoogleError} redirectTo="/dashboard" />
 
         <p className="sub" style={{ marginTop: 24 }}>
           Already have an account? <Link href="/login">Log in</Link>

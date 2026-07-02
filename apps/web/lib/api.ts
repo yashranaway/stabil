@@ -154,6 +154,8 @@ export const api = {
     request<AuthResult>("/api/v1/auth/register", { method: "POST", body, auth: false }),
   login: (email: string, password: string) =>
     request<AuthResult>("/api/v1/auth/login", { method: "POST", body: { email, password }, auth: false }),
+  loginWithGoogle: (idToken: string) =>
+    request<AuthResult>("/api/v1/auth/google", { method: "POST", body: { idToken }, auth: false }),
   me: () => request<AuthUser>("/api/v1/auth/me"),
   logout: (refreshToken: string) =>
     request<void>("/api/v1/auth/logout", { method: "POST", body: { refreshToken } }),

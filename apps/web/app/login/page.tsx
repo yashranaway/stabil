@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { GoogleSignInButton } from "@/app/components/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -15,6 +16,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,6 +73,13 @@ export default function LoginPage() {
             {submitting ? "Logging in…" : "Log in"}
           </button>
         </form>
+
+        {googleError && (
+          <p className="error-text" role="alert">
+            {googleError}
+          </p>
+        )}
+        <GoogleSignInButton onError={setGoogleError} redirectTo="/dashboard" />
 
         <p className="sub" style={{ marginTop: 24 }}>
           Don&apos;t have an account? <Link href="/register">Create one</Link>

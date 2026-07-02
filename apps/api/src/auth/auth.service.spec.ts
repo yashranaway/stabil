@@ -125,6 +125,17 @@ describe("AuthService", () => {
     });
   });
 
+  describe("loginWithGoogle", () => {
+    it("fails closed with UnauthorizedException when GOOGLE_CLIENT_ID is not configured", async () => {
+      // No GOOGLE_CLIENT_ID in the test env, so the service must refuse rather
+      // than silently accept an unverifiable credential.
+      await expect(service.loginWithGoogle("some.id.token")).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   describe("refresh", () => {
     it("revokes the whole family when a revoked token is replayed (reuse detection)", async () => {
       prisma.refreshToken.findUnique.mockResolvedValue({

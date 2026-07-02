@@ -7,7 +7,7 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import { loginSchema, refreshSchema, registerSchema } from "@stabil/types";
+import { googleAuthSchema, loginSchema, refreshSchema, registerSchema } from "@stabil/types";
 import type { AuthUser } from "@stabil/types";
 
 import { AuthService } from "./auth.service";
@@ -35,6 +35,16 @@ export class AuthController {
       throw new BadRequestException(parsed.error.flatten());
     }
     return this.auth.login(parsed.data);
+  }
+
+  @Post("google")
+  @HttpCode(200)
+  google(@Body() body: unknown) {
+    const parsed = googleAuthSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.flatten());
+    }
+    return this.auth.loginWithGoogle(parsed.data.idToken);
   }
 
   @Post("refresh")

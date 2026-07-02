@@ -32,12 +32,18 @@ export function NavBar() {
           </>
         ) : (
           <>
-            <Link href="/score">Get your score</Link>
             <Link href="/pricing">Pricing</Link>
             <Link href="/about">About</Link>
             <Link href="/security">Security</Link>
-            <Link href="/login">Log in</Link>
-            <Link href="/register">Sign up</Link>
+            <Link href="/login" className="nav-btn nav-btn-ghost">
+              Log in
+            </Link>
+            <Link href="/score" className="nav-btn nav-btn-ghost">
+              Get your score
+            </Link>
+            <Link href="/register" className="nav-btn nav-btn-primary">
+              Sign up
+            </Link>
           </>
         )}
       </div>
