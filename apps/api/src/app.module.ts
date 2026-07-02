@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 
 import { AccountModule } from "./account/account.module";
+import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { ConsentModule } from "./consent/consent.module";
 import { HealthController } from "./health/health.controller";
@@ -31,6 +32,7 @@ import { VerificationModule } from "./verification/verification.module";
     ParsingModule,
     AccountModule,
     VerificationModule,
+    AdminModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

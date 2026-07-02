@@ -1,15 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { api, ApiError, type VerificationDoc } from "@/lib/api";
+import { api, ApiError, type AdminProfile, type AdminUser, type VerificationDoc } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 export default function AdminPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [docs, setDocs] = useState<VerificationDoc[] | null>(null);
+  const [profiles, setProfiles] = useState<AdminProfile[] | null>(null);
+  const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,9 +22,16 @@ export default function AdminPage() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      setDocs(await api.adminListPendingDocs());
+      const [d, p, u] = await Promise.all([
+        api.adminListPendingDocs(),
+        api.adminListProfiles(),
+        api.adminListUsers(),
+      ]);
+      setDocs(d);
+      setProfiles(p);
+      setUsers(u);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to load review queue.");
+      setError(e instanceof ApiError ? e.message : "Failed to load admin data.");
     }
   }, []);
 
@@ -43,9 +53,84 @@ export default function AdminPage() {
 
   return (
     <main>
-      <h1>Verification review</h1>
-      <p className="sub">Documents awaiting verification.</p>
+      <h1>Admin</h1>
+      <p className="sub">
+        Your account bypasses ownership and consent checks — every profile and report below
+        opens directly, with no share grant required.
+      </p>
       {error && <p className="error-text">{error}</p>}
+
+      <h2 style={{ marginTop: 32 }}>All profiles ({profiles?.length ?? "…"})</h2>
+      {!profiles ? (
+        <p className="muted">Loading…</p>
+      ) : profiles.length === 0 ? (
+        <p className="muted">No profiles yet.</p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+            <thead>
+              <tr>
+                <th style={th}>Candidate</th>
+                <th style={th}>Mode</th>
+                <th style={th}>Score</th>
+                <th style={th}>Claim</th>
+                <th style={th}>Owner / invited email</th>
+                <th style={th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {profiles.map((p) => (
+                <tr key={p.id}>
+                  <td style={td}>{p.displayName}</td>
+                  <td style={td}>{p.mode}</td>
+                  <td style={td}>
+                    {p.latestScoreRun ? `${p.latestScoreRun.total} · ${p.latestScoreRun.tier}` : "—"}
+                  </td>
+                  <td style={td}>{p.claimStatus}</td>
+                  <td style={td}>{p.ownerEmail ?? p.candidateEmail ?? "—"}</td>
+                  <td style={td}>
+                    <Link href={`/profiles/${p.id}`} className="btn-secondary">
+                      Open
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h2 style={{ marginTop: 40 }}>All users ({users?.length ?? "…"})</h2>
+      {!users ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+            <thead>
+              <tr>
+                <th style={th}>Email</th>
+                <th style={th}>Name</th>
+                <th style={th}>Role</th>
+                <th style={th}>Joined</th>
+                <th style={th}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td style={td}>{u.email}</td>
+                  <td style={td}>{u.name ?? "—"}</td>
+                  <td style={td}>{u.role}</td>
+                  <td style={td}>{new Date(u.createdAt).toLocaleDateString()}</td>
+                  <td style={td}>{u.deletedAt ? "Deleted" : "Active"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <h2 style={{ marginTop: 40 }}>Verification review</h2>
       {!docs ? (
         <p className="muted">Loading…</p>
       ) : docs.length === 0 ? (
@@ -75,3 +160,16 @@ export default function AdminPage() {
     </main>
   );
 }
+
+const th: React.CSSProperties = {
+  textAlign: "left",
+  padding: "10px 12px",
+  borderBottom: "1px solid var(--border)",
+  color: "var(--muted)",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+};
+const td: React.CSSProperties = {
+  padding: "10px 12px",
+  borderBottom: "1px solid var(--border)",
+};

@@ -13,18 +13,10 @@ import type {
   RegisterDto,
   TokenPair,
 } from "@stabil/types";
-import * as argon2 from "argon2";
 import { OAuth2Client } from "google-auth-library";
 
 import { PrismaService } from "../prisma/prisma.service";
-
-/** argon2id parameters (see docs/architecture/05-security-privacy.md §7.1). */
-const ARGON2_OPTIONS: argon2.Options = {
-  type: argon2.argon2id,
-  memoryCost: 65536,
-  timeCost: 3,
-  parallelism: 1,
-};
+import { hashPassword, verifyPassword } from "./password.util";
 
 /** Refresh tokens live 30 days; access tokens 15 minutes (signOptions). */
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -57,7 +49,7 @@ export class AuthService {
       throw new ConflictException("Email already registered.");
     }
 
-    const passwordHash = await argon2.hash(dto.password, ARGON2_OPTIONS);
+    const passwordHash = await hashPassword(dto.password);
     const created = (await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -82,7 +74,7 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials.");
     }
 
-    const valid = await argon2.verify(record.passwordHash, dto.password);
+    const valid = await verifyPassword(record.passwordHash, dto.password);
     if (!valid) {
       throw new UnauthorizedException("Invalid credentials.");
     }

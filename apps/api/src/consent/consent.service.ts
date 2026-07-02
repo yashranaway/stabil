@@ -32,7 +32,7 @@ export class ConsentService {
     if (!profile) {
       throw new NotFoundException("profile not found");
     }
-    if (profile.ownerUserId !== user.id) {
+    if (profile.ownerUserId !== user.id && user.role !== "ADMIN") {
       throw new ForbiddenException("only the profile owner may grant access");
     }
 
@@ -76,7 +76,7 @@ export class ConsentService {
     if (!grant) {
       throw new NotFoundException("share not found");
     }
-    if (grant.profile.ownerUserId !== user.id) {
+    if (grant.profile.ownerUserId !== user.id && user.role !== "ADMIN") {
       throw new ForbiddenException("only the profile owner may revoke this share");
     }
     await this.prisma.shareGrant.update({
@@ -87,10 +87,20 @@ export class ConsentService {
 
   /**
    * Reusable access check for report reads. Allowed when the user owns the profile
-   * (audience "candidate") or holds an ACTIVE, unexpired ShareGrant addressed to them
-   * (audience derived from role: EMPLOYER→"employer", RECRUITER→"recruiter", else "employer").
+   * (audience "candidate"), holds an ACTIVE, unexpired ShareGrant addressed to them
+   * (audience derived from role: EMPLOYER→"employer", RECRUITER→"recruiter", else
+   * "employer"), or is an ADMIN — who bypasses ownership/consent entirely and always
+   * sees the fullest ("employer") view.
    */
   async hasAccess(userId: string, userEmail: string, profileId: string): Promise<AccessDecision> {
+    const requester = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (requester?.role === "ADMIN") {
+      return { allowed: true, audience: "employer" };
+    }
+
     const profile = await this.prisma.candidateProfile.findFirst({
       where: { id: profileId, deletedAt: null },
       select: { ownerUserId: true },
@@ -115,11 +125,7 @@ export class ConsentService {
       return { allowed: false, audience: "candidate" };
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    });
-    const audience: Audience = user?.role === "RECRUITER" ? "recruiter" : "employer";
+    const audience: Audience = requester?.role === "RECRUITER" ? "recruiter" : "employer";
     return { allowed: true, audience };
   }
 }

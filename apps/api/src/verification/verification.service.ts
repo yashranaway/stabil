@@ -83,6 +83,8 @@ export class VerificationService {
       select: { ownerUserId: true },
     });
     if (!profile) throw new NotFoundException("profile not found");
-    if (profile.ownerUserId !== user.id) throw new ForbiddenException("not your profile");
+    if (profile.ownerUserId !== user.id && user.role !== "ADMIN") {
+      throw new ForbiddenException("not your profile");
+    }
   }
 }

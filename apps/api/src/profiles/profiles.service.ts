@@ -87,7 +87,11 @@ export class ProfilesService {
     if (!profile) {
       throw new NotFoundException("Profile not found");
     }
-    if (profile.ownerUserId !== user.id && profile.submittedByUserId !== user.id) {
+    if (
+      profile.ownerUserId !== user.id &&
+      profile.submittedByUserId !== user.id &&
+      user.role !== "ADMIN"
+    ) {
       throw new ForbiddenException("You do not have access to this profile");
     }
 
@@ -168,7 +172,31 @@ export class ProfilesService {
     });
   }
 
-  /** Resolve a profile and ensure the caller owns it (404 missing, 403 otherwise). */
+  /**
+   * List every profile in the system (admin-only surface), newest first, with
+   * owner email and latest score summary — no ownership filtering.
+   */
+  async listAll() {
+    const profiles = await this.prisma.candidateProfile.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      include: {
+        owner: { select: { email: true } },
+        scoreRuns: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    });
+
+    return profiles.map(({ scoreRuns, owner, ...profile }) => ({
+      ...profile,
+      ownerEmail: owner?.email ?? null,
+      latestScoreRun: this.toSummary(scoreRuns[0]),
+    }));
+  }
+
+  /**
+   * Resolve a profile and ensure the caller owns it (404 missing, 403
+   * otherwise). ADMIN bypasses the ownership check entirely.
+   */
   private async assertOwner(user: AuthUser, id: string) {
     const profile = await this.prisma.candidateProfile.findFirst({
       where: { id, deletedAt: null },
@@ -178,7 +206,7 @@ export class ProfilesService {
     if (!profile) {
       throw new NotFoundException("Profile not found");
     }
-    if (profile.ownerUserId !== user.id) {
+    if (profile.ownerUserId !== user.id && user.role !== "ADMIN") {
       throw new ForbiddenException("You do not own this profile");
     }
     return profile;

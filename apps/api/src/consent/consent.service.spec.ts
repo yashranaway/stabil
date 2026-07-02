@@ -43,6 +43,12 @@ const employer: AuthUser = {
   name: "Boss",
   role: "EMPLOYER",
 };
+const admin: AuthUser = {
+  id: "44444444-4444-4444-4444-444444444444",
+  email: "root@stabil.dev",
+  name: "Root",
+  role: "ADMIN",
+};
 const PROFILE_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 describe("ConsentService", () => {
@@ -87,6 +93,18 @@ describe("ConsentService", () => {
         service.createShare(owner, { profileId: PROFILE_ID, granteeEmail: "x@y.com", expiresInDays: 30 }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it("lets an ADMIN grant access on someone else's profile", async () => {
+      prisma.candidateProfile.findFirst.mockResolvedValue({ id: PROFILE_ID, ownerUserId: owner.id });
+      prisma.shareGrant.create.mockImplementation(({ data }) => Promise.resolve({ id: "g1", ...data }));
+
+      const grant = await service.createShare(admin, {
+        profileId: PROFILE_ID,
+        granteeEmail: "x@y.com",
+        expiresInDays: 30,
+      });
+      expect(grant.status).toBe("ACTIVE");
+    });
   });
 
   describe("revoke", () => {
@@ -117,6 +135,17 @@ describe("ConsentService", () => {
     it("404s for an unknown grant", async () => {
       prisma.shareGrant.findUnique.mockResolvedValue(null);
       await expect(service.revoke(owner, "missing")).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("lets an ADMIN revoke a grant on someone else's profile", async () => {
+      prisma.shareGrant.findUnique.mockResolvedValue({
+        id: "g1",
+        profile: { ownerUserId: owner.id },
+      });
+      prisma.shareGrant.update.mockResolvedValue({});
+
+      await service.revoke(admin, "g1");
+      expect(prisma.shareGrant.update).toHaveBeenCalled();
     });
   });
 
@@ -174,6 +203,15 @@ describe("ConsentService", () => {
 
       const decision = await service.hasAccess(employer.id, employer.email, PROFILE_ID);
       expect(decision.allowed).toBe(false);
+    });
+
+    it("bypasses ownership and consent entirely for an ADMIN, with full ('employer') audience", async () => {
+      prisma.user.findUnique.mockResolvedValue({ role: "ADMIN" });
+
+      const decision = await service.hasAccess(admin.id, admin.email, PROFILE_ID);
+      expect(decision).toEqual({ allowed: true, audience: "employer" });
+      expect(prisma.candidateProfile.findFirst).not.toHaveBeenCalled();
+      expect(prisma.shareGrant.findFirst).not.toHaveBeenCalled();
     });
   });
 });

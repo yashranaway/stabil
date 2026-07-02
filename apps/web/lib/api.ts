@@ -99,6 +99,38 @@ async function request<T>(path: string, { method = "GET", body, auth = true }: R
   return (await res.json()) as T;
 }
 
+/** Like `request`, but sends a `FormData` body (no JSON content-type, browser sets the boundary). */
+async function requestMultipart<T>(path: string, formData: FormData): Promise<T> {
+  const send = (token: string | null) =>
+    fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: formData,
+    });
+
+  let res: Response;
+  try {
+    res = await send(getAccessToken());
+    if (res.status === 401 && (await refreshTokens())) {
+      res = await send(getAccessToken());
+    }
+  } catch {
+    throw new ApiError(`Could not reach the API at ${API_BASE}.`, 0);
+  }
+
+  if (!res.ok) {
+    let message = `Request failed (HTTP ${res.status}).`;
+    try {
+      const problem = (await res.json()) as ProblemDetails;
+      message = problem.detail ?? problem.title ?? message;
+    } catch {
+      /* non-JSON */
+    }
+    throw new ApiError(message, res.status);
+  }
+  return (await res.json()) as T;
+}
+
 // ---- Domain response shapes (subset of what the API returns) ----
 export interface AuthResult {
   user: AuthUser;
@@ -147,6 +179,23 @@ export interface VerificationDoc {
   status: "PENDING" | "APPROVED" | "REJECTED";
   createdAt: string;
 }
+export interface AdminProfile extends Profile {
+  ownerEmail: string | null;
+  submittedByUserId: string | null;
+  candidateEmail: string | null;
+}
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: "CANDIDATE" | "EMPLOYER" | "RECRUITER" | "ADMIN";
+  createdAt: string;
+  deletedAt: string | null;
+}
+export interface ParseResult {
+  extracted: Record<string, unknown>;
+  suggestions: Record<string, number>;
+}
 
 export const api = {
   // auth
@@ -173,10 +222,12 @@ export const api = {
 
   // parsing (Phase 2)
   parseResume: (resumeText: string) =>
-    request<{ extracted: Record<string, unknown>; suggestions: Record<string, number> }>(
-      "/api/v1/parse/resume",
-      { method: "POST", body: { resumeText } },
-    ),
+    request<ParseResult>("/api/v1/parse/resume", { method: "POST", body: { resumeText } }),
+  parseResumeFile: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return requestMultipart<ParseResult>("/api/v1/parse/resume-file", form);
+  },
 
   // verification (Phase 3)
   submitDocument: (profileId: string, body: { kind: string; region: string }) =>
@@ -191,6 +242,10 @@ export const api = {
     request<VerificationDoc>(`/api/v1/admin/verifications/${docId}/approve`, { method: "POST" }),
   adminRejectDoc: (docId: string) =>
     request<VerificationDoc>(`/api/v1/admin/verifications/${docId}/reject`, { method: "POST" }),
+
+  // admin — full-visibility surface (bypasses ownership/consent)
+  adminListProfiles: () => request<AdminProfile[]>("/api/v1/admin/profiles"),
+  adminListUsers: () => request<AdminUser[]>("/api/v1/admin/users"),
 
   // notifications
   listNotifications: () => request<Notification[]>("/api/v1/notifications"),

@@ -29,20 +29,39 @@ export function ProfileScoreForm({
   onSubmit: (answers: RawAnswers) => void;
 }) {
   const [resume, setResume] = useState("");
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [prefill, setPrefill] = useState<Partial<RawAnswers>>({});
   const [formKey, setFormKey] = useState(0);
+
+  function applyPrefill(suggestions: Record<string, number>) {
+    setPrefill(suggestions as Partial<RawAnswers>);
+    setFormKey((k) => k + 1); // remount form so new defaults take effect
+  }
 
   async function prefillFromResume() {
     setParsing(true);
     setParseError(null);
     try {
       const { suggestions } = await api.parseResume(resume);
-      setPrefill(suggestions as Partial<RawAnswers>);
-      setFormKey((k) => k + 1); // remount form so new defaults take effect
+      applyPrefill(suggestions);
     } catch (err) {
       setParseError(err instanceof ApiError ? err.message : "Could not parse résumé.");
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function prefillFromPdf() {
+    if (!resumeFile) return;
+    setParsing(true);
+    setParseError(null);
+    try {
+      const { suggestions } = await api.parseResumeFile(resumeFile);
+      applyPrefill(suggestions);
+    } catch (err) {
+      setParseError(err instanceof ApiError ? err.message : "Could not parse this PDF.");
     } finally {
       setParsing(false);
     }
@@ -59,11 +78,29 @@ export function ProfileScoreForm({
 
       <div className="card" style={{ marginBottom: 16 }}>
         <h2>Prefill from résumé (optional)</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Upload a PDF or paste text — Stabil&apos;s AI reads it and suggests values below.
+        </p>
+        <div className="row" style={{ marginBottom: 12 }}>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setResumeFile(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void prefillFromPdf()}
+            disabled={parsing || !resumeFile}
+          >
+            {parsing ? "Parsing…" : "Prefill from PDF"}
+          </button>
+        </div>
         <textarea
           rows={5}
           value={resume}
           onChange={(e) => setResume(e.target.value)}
-          placeholder="Paste résumé text to auto-fill some fields…"
+          placeholder="…or paste résumé text to auto-fill some fields"
           style={{
             width: "100%",
             padding: 12,
@@ -81,7 +118,7 @@ export function ProfileScoreForm({
           onClick={() => void prefillFromResume()}
           disabled={parsing || resume.trim().length < 20}
         >
-          {parsing ? "Parsing…" : "Prefill from résumé"}
+          {parsing ? "Parsing…" : "Prefill from text"}
         </button>
       </div>
 
