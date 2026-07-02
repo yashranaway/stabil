@@ -40,6 +40,7 @@ export class StubLlmAdapter implements LlmAdapter {
       certificationsCount: certs || null,
       currentLocation: null,
       confidence: 0.3,
+      source: "heuristic",
     });
   }
 }

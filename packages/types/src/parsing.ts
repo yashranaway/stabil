@@ -14,6 +14,8 @@ export const extractedResumeSchema = z.object({
   currentLocation: z.string().nullable().default(null),
   /** Model's self-reported confidence in the extraction, 0–1. */
   confidence: z.number().min(0).max(1).default(0.5),
+  /** Which extraction path actually produced this result — for UI transparency. */
+  source: z.enum(["ai", "heuristic"]).default("heuristic"),
 });
 
 export type ExtractedResume = z.infer<typeof extractedResumeSchema>;
