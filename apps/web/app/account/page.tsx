@@ -91,7 +91,7 @@ export default function AccountPage() {
       </div>
 
       <div style={{ marginTop: 32 }}>
-        <h2 style={{ fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--ink)" }}>
           Reports I&apos;ve shared
         </h2>
 

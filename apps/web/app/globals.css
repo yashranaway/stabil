@@ -33,6 +33,8 @@
     --radius-lg: 10px;
     --shadow-sm: 0 1px 2px rgba(22, 21, 15, 0.04), 0 1px 1px rgba(22, 21, 15, 0.02);
     --shadow-md: 0 10px 30px -12px rgba(22, 21, 15, 0.12);
+    /* page content width — wide enough to use the window instead of floating a narrow column in it */
+    --content-width: 1240px;
 
     /* back-compat aliases (older components/inline styles use these names) */
     --bg: var(--canvas);
@@ -96,9 +98,9 @@
   main {
     position: relative;
     z-index: 1;
-    max-width: 960px;
+    max-width: var(--content-width);
     margin: 0 auto;
-    padding: 64px 24px 112px;
+    padding: 56px 32px 112px;
   }
 
   /* quiet staggered entrance */
@@ -157,8 +159,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 24px;
-    max-width: 960px;
+    padding: 16px 32px;
+    max-width: var(--content-width);
     margin: 0 auto;
     backdrop-filter: blur(10px);
     background: color-mix(in srgb, var(--canvas) 82%, transparent);
@@ -195,11 +197,12 @@
   .link-btn {
     color: var(--muted);
     text-decoration: none;
-    font-size: 0.7rem;
-    font-family: var(--font-mono), monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    padding: 6px 10px;
+    font-size: 0.95rem;
+    font-family: var(--font-sans), sans-serif;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 8px 12px;
     border-radius: var(--radius);
     background: none;
     border: none;
@@ -256,12 +259,12 @@
     transition: border-color 0.2s, box-shadow 0.2s;
   }
   .card h2 {
-    font-family: var(--font-mono), monospace;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--muted);
-    font-weight: 500;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 1.05rem;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+    font-weight: 700;
     margin: 0 0 14px;
   }
   .grid {
@@ -282,8 +285,8 @@
     align-items: center;
     gap: 8px;
     font-weight: 600;
-    font-family: var(--font-mono), monospace;
-    font-size: 0.88rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.95rem;
   }
   .dot {
     width: 8px;
@@ -369,23 +372,42 @@
   .form-screen {
     display: block;
   }
+  /* wide screens: lay fields out two-up instead of one long stacked column */
+  @media (min-width: 760px) {
+    .form {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0 32px;
+      align-items: start;
+    }
+    .form-section {
+      grid-column: 1 / -1;
+    }
+    .form > .field:has(textarea),
+    .form > button[type="submit"] {
+      grid-column: 1 / -1;
+    }
+    .form > button[type="submit"] {
+      justify-self: start;
+      margin-top: 8px;
+    }
+  }
   .field,
   .slider-row,
   .checkbox-row {
-    margin-bottom: 18px;
+    margin-bottom: 20px;
   }
-  .field label,
+  .field label:not(.checkbox-row),
   .field-label {
     display: block;
-    font-family: var(--font-mono), monospace;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--muted);
-    margin-bottom: 7px;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.98rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ink);
+    margin-bottom: 8px;
   }
-  .field input,
-  .field select,
   .input,
   input[type="text"],
   input[type="email"],
@@ -441,11 +463,19 @@
   .checkbox-row {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 12px;
+    cursor: pointer;
   }
   .checkbox-row input {
-    width: auto;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    padding: 0;
+    flex-shrink: 0;
     accent-color: var(--signal);
+  }
+  .checkbox-row span {
+    font-size: 0.95rem;
   }
   .slider {
     width: 100%;
@@ -459,12 +489,13 @@
   .sensitive-tag {
     display: inline-block;
     margin-left: 8px;
-    padding: 1px 8px;
+    padding: 2px 10px;
     border-radius: 99px;
-    font-family: var(--font-mono), monospace;
-    font-size: 0.58rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
     color: var(--tier-developing);
     border: 1px solid color-mix(in srgb, var(--tier-developing) 45%, transparent);
     background: color-mix(in srgb, var(--tier-developing) 6%, transparent);
@@ -507,10 +538,11 @@
     box-shadow: var(--shadow-md);
   }
   .mode-kicker {
-    font-family: var(--font-mono), monospace;
-    font-size: 0.62rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.18em;
+    letter-spacing: 0.06em;
     color: var(--signal);
   }
   .mode-title {
@@ -528,14 +560,24 @@
   }
 
   /* ---- report / gauge ---- */
-  .report-header,
-  .report-top {
+  .report-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
     margin-bottom: 20px;
+  }
+  .report-top {
+    display: grid;
+    grid-template-columns: minmax(300px, 420px) 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 760px) {
+    .report-top {
+      grid-template-columns: 1fr;
+    }
   }
   .gauge-card {
     background: var(--surface);
@@ -561,9 +603,9 @@
   }
   .gauge-meta {
     color: var(--muted);
-    font-family: var(--font-mono), monospace;
-    font-size: 0.78rem;
-    letter-spacing: 0.06em;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.92rem;
+    letter-spacing: 0;
   }
   .gauge-blurb {
     color: var(--muted);
@@ -630,13 +672,13 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 13px;
+    padding: 6px 14px;
     border-radius: 99px;
-    font-family: var(--font-mono), monospace;
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0;
     border: 1px solid var(--line-2);
     background: var(--surface);
   }
@@ -697,17 +739,18 @@
 
 @layer components {
   .kicker {
-    font-family: var(--font-mono), monospace;
-    font-size: 0.66rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.2em;
+    letter-spacing: 0.06em;
     color: var(--signal);
     margin: 0 0 14px;
   }
 
   /* ---- hero ---- */
   .landing {
-    max-width: 1040px;
+    max-width: var(--content-width);
   }
   .hero {
     display: grid;
@@ -766,10 +809,11 @@
     background: var(--tier-settled);
   }
   .specimen-foot {
-    font-family: var(--font-mono), monospace;
-    font-size: 0.66rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.04em;
     margin: 14px 0 0;
   }
 
@@ -783,9 +827,10 @@
     margin: 8px 0 28px;
     border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
-    font-family: var(--font-mono), monospace;
-    font-size: 0.66rem;
-    letter-spacing: 0.16em;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     color: var(--muted);
   }
 
@@ -820,8 +865,9 @@
   }
   .step-num {
     font-family: var(--font-mono), monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.16em;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     color: var(--signal);
   }
   .step h3 {
@@ -876,7 +922,7 @@
   }
   .tier-cell-range {
     font-family: var(--font-mono), monospace;
-    font-size: 0.74rem;
+    font-size: 0.86rem;
     color: var(--muted);
   }
 
@@ -897,8 +943,9 @@
   }
   .feature-num {
     font-family: var(--font-mono), monospace;
-    font-size: 0.68rem;
-    letter-spacing: 0.16em;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     color: var(--signal);
   }
 
@@ -1002,15 +1049,16 @@
   }
   .price-flag {
     position: absolute;
-    top: -11px;
+    top: -12px;
     left: 22px;
     background: var(--signal);
     color: var(--signal-ink);
-    font-family: var(--font-mono), monospace;
-    font-size: 0.6rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.76rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-    padding: 3px 10px;
+    letter-spacing: 0.04em;
+    padding: 4px 12px;
     border-radius: 99px;
   }
   .price-figure {
@@ -1073,12 +1121,13 @@
     border-top: 2px solid var(--ink);
   }
   .ledger-key {
-    font-family: var(--font-mono), monospace;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.92rem;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
     color: var(--ink);
-    padding-top: 3px;
+    padding-top: 0;
   }
 
   /* ---- site footer ---- */
@@ -1088,9 +1137,9 @@
     margin-top: 48px;
   }
   .site-footer-inner {
-    max-width: 960px;
+    max-width: var(--content-width);
     margin: 0 auto;
-    padding: 48px 24px 32px;
+    padding: 48px 32px 32px;
     display: grid;
     grid-template-columns: 1.2fr 2fr;
     gap: 40px;
@@ -1118,10 +1167,11 @@
     }
   }
   .site-footer-cols h3 {
-    font-family: var(--font-mono), monospace;
-    font-size: 0.64rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.85rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.04em;
     color: var(--muted);
     margin: 0 0 12px;
   }
@@ -1134,16 +1184,16 @@
   }
   .site-footer-line {
     border-top: 1px solid var(--line);
-    max-width: 960px;
+    max-width: var(--content-width);
     margin: 0 auto;
-    padding: 16px 24px 22px;
+    padding: 16px 32px 22px;
     display: flex;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    font-family: var(--font-mono), monospace;
-    font-size: 0.62rem;
-    letter-spacing: 0.12em;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.82rem;
+    letter-spacing: 0;
     color: var(--muted);
   }
 }
@@ -1163,10 +1213,11 @@
     width: 100%;
     gap: 12px;
     color: var(--muted);
-    font-family: var(--font-mono), monospace;
-    font-size: 0.66rem;
+    font-family: var(--font-sans), sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.04em;
   }
   .divider-or::before,
   .divider-or::after {
